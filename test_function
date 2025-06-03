@@ -1,0 +1,89 @@
+import sqlite3
+from datetime import datetime, timedelta
+
+def init_db():
+    conn = sqlite3.connect('shelf_life.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS samples (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sample_name TEXT NOT NULL,
+            owner_email TEXT NOT NULL,
+            date_stored TEXT NOT NULL,
+            maturation_date TEXT NOT NULL,
+            notified INTEGER DEFAULT 0
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def add_sample():
+    name = input("Sample name: ")
+    email = input("Owner email: ")
+    stored = input("Date stored (YYYY-MM-DD): ")
+    maturation = input("Maturation date (YYYY-MM-DD): ")
+    conn = sqlite3.connect('shelf_life.db')
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO samples (sample_name, owner_email, date_stored, maturation_date)
+        VALUES (?, ?, ?, ?)
+    ''', (name, email, stored, maturation))
+    conn.commit()
+    conn.close()
+    print("✅ Sample added.")
+
+def list_samples():
+    conn = sqlite3.connect('shelf_life.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM samples')
+    rows = c.fetchall()
+    if not rows:
+        print("No samples found.")
+    else:
+        for row in rows:
+            print(f"ID: {row[0]} | Name: {row[1]} | Email: {row[2]} | Stored: {row[3]} | Maturation: {row[4]} | Notified: {bool(row[5])}")
+    conn.close()
+
+def check_maturation():
+    conn = sqlite3.connect('shelf_life.db')
+    c = conn.cursor()
+    today = datetime.today().date()
+    future = today + timedelta(days=60)
+    c.execute('''
+        SELECT id, sample_name, owner_email, maturation_date
+        FROM samples
+        WHERE notified = 0
+    ''')
+    rows = c.fetchall()
+    for row in rows:
+        sample_id, name, email, mat_date = row
+        mat_date = datetime.strptime(mat_date, "%Y-%m-%d").date()
+        if today <= mat_date <= future:
+            print(f"[REMINDER] Notify {email} about '{name}' maturing on {mat_date}")
+            c.execute('UPDATE samples SET notified = 1 WHERE id = ?', (sample_id,))
+    conn.commit()
+    conn.close()
+
+def main():
+    init_db()
+    while True:
+        print("\nShelf-life Study Management System")
+        print("1. Add new sample")
+        print("2. List all samples")
+        print("3. Check for upcoming maturation")
+        print("4. Exit")
+        choice = input("Enter choice: ")
+        if choice == '1':
+            add_sample()
+        elif choice == '2':
+            list_samples()
+        elif choice == '3':
+            check_maturation()
+        elif choice == '4':
+            break
+        else:
+            print("Invalid option. Try again.")
+
+
+if __name__ == "__main__":
+    main()
