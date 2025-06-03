@@ -1,89 +1,228 @@
-import sqlite3
-from datetime import datetime, timedelta
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+import pandas as pd
+import datetime
+import barcode
+from barcode.writer import ImageWriter
+import os
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
 
-def init_db():
-    conn = sqlite3.connect('shelf_life.db')
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS samples (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sample_name TEXT NOT NULL,
-            owner_email TEXT NOT NULL,
-            date_stored TEXT NOT NULL,
-            maturation_date TEXT NOT NULL,
-            notified INTEGER DEFAULT 0
-        )
-    ''')
-    conn.commit()
-    conn.close()
+data = pd.DataFrame(columns=["Name", "ID", "Date", "Expiry Date"])
+imported_file_path = None
 
-def add_sample():
-    name = input("Sample name: ")
-    email = input("Owner email: ")
-    stored = input("Date stored (YYYY-MM-DD): ")
-    maturation = input("Maturation date (YYYY-MM-DD): ")
-    conn = sqlite3.connect('shelf_life.db')
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO samples (sample_name, owner_email, date_stored, maturation_date)
-        VALUES (?, ?, ?, ?)
-    ''', (name, email, stored, maturation))
-    conn.commit()
-    conn.close()
-    print("✅ Sample added.")
+def add_data(name, id_, date_str, expiry_str):
+    global data
+    try:
+        # Validate input dates
+        input_date = datetime.datetime.strptime(date_str, "%Y/%m/%d")
+        expiry_date = datetime.datetime.strptime(expiry_str, "%Y/%m/%d")
+        if expiry_date <= input_date:
+            messagebox.showerror("Error", "Expiry Date must be after Date.")
+            return
+        new_row = {
+            "Name": name,
+            "ID": id_,
+            "Date": date_str,
+            "Expiry Date": expiry_str
+        }
+        data = pd.concat([data, pd.DataFrame([new_row])], ignore_index=True)
+        messagebox.showinfo("Success", "Data added successfully.")
+    except ValueError:
+        messagebox.showerror("Error", "Date format should be YYYY/MM/DD.")
 
-def list_samples():
-    conn = sqlite3.connect('shelf_life.db')
-    c = conn.cursor()
-    c.execute('SELECT * FROM samples')
-    rows = c.fetchall()
-    if not rows:
-        print("No samples found.")
-    else:
-        for row in rows:
-            print(f"ID: {row[0]} | Name: {row[1]} | Email: {row[2]} | Stored: {row[3]} | Maturation: {row[4]} | Notified: {bool(row[5])}")
-    conn.close()
+def show_add_form():
+    for widget in right_panel.winfo_children():
+        widget.destroy()
 
-def check_maturation():
-    conn = sqlite3.connect('shelf_life.db')
-    c = conn.cursor()
-    today = datetime.today().date()
-    future = today + timedelta(days=60)
-    c.execute('''
-        SELECT id, sample_name, owner_email, maturation_date
-        FROM samples
-        WHERE notified = 0
-    ''')
-    rows = c.fetchall()
-    for row in rows:
-        sample_id, name, email, mat_date = row
-        mat_date = datetime.strptime(mat_date, "%Y-%m-%d").date()
-        if today <= mat_date <= future:
-            print(f"[REMINDER] Notify {email} about '{name}' maturing on {mat_date}")
-            c.execute('UPDATE samples SET notified = 1 WHERE id = ?', (sample_id,))
-    conn.commit()
-    conn.close()
+    tk.Label(right_panel, text="Name").pack()
+    name_entry = tk.Entry(right_panel)
+    name_entry.pack()
 
-def main():
-    init_db()
-    while True:
-        print("\nShelf-life Study Management System")
-        print("1. Add new sample")
-        print("2. List all samples")
-        print("3. Check for upcoming maturation")
-        print("4. Exit")
-        choice = input("Enter choice: ")
-        if choice == '1':
-            add_sample()
-        elif choice == '2':
-            list_samples()
-        elif choice == '3':
-            check_maturation()
-        elif choice == '4':
-            break
-        else:
-            print("Invalid option. Try again.")
+    tk.Label(right_panel, text="ID").pack()
+    id_entry = tk.Entry(right_panel)
+    id_entry.pack()
 
+    tk.Label(right_panel, text="Date (YYYY/MM/DD)").pack()
+    date_entry = tk.Entry(right_panel)
+    date_entry.pack()
 
-if __name__ == "__main__":
-    main()
+    tk.Label(right_panel, text="Expiry Date (YYYY/MM/DD)").pack()
+    expiry_entry = tk.Entry(right_panel)
+    expiry_entry.pack()
+
+    def submit():
+        add_data(name_entry.get(), id_entry.get(), date_entry.get(), expiry_entry.get())
+
+    ttk.Button(right_panel, text="Submit", command=submit).pack(pady=10)
+
+def view_data():
+    global data, imported_file_path
+
+    for widget in right_panel.winfo_children():
+        widget.destroy()
+
+    if data.empty:
+        tk.Label(right_panel, text="No data available.").pack()
+        return
+
+    today = datetime.date.today()
+    updated_data = data.copy()
+
+    # Convert Expiry Date to datetime for calculation
+    updated_data["Expiry Date"] = pd.to_datetime(updated_data["Expiry Date"], errors="coerce")
+    # Calculate Days Left as int
+    updated_data["Days Left"] = (updated_data["Expiry Date"].dt.date - today).apply(lambda x: x.days)
+
+    # Convert Expiry Date back to string for display and export
+    updated_data["Expiry Date"] = updated_data["Expiry Date"].dt.strftime("%Y/%m/%d")
+
+    # Export to Excel with highlights if file imported
+    if imported_file_path:
+        base_name = os.path.splitext(os.path.basename(imported_file_path))[0]
+        new_file_path = os.path.join(os.path.dirname(imported_file_path), base_name + "_ExpiryDate.xlsx")
+        updated_data.to_excel(new_file_path, index=False)
+
+        wb = load_workbook(new_file_path)
+        ws = wb.active
+
+        days_left_col = None
+        for idx, col in enumerate(ws[1], 1):
+            if col.value == "Days Left":
+                days_left_col = idx
+                break
+
+        red = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+        yellow = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+        green = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+
+        for row in ws.iter_rows(min_row=2):
+            cell = row[days_left_col - 1]
+            if cell.value is not None:
+                try:
+                    val = int(cell.value)
+                    if 40 <= val <= 60:
+                        cell.fill = green
+                    elif 15 <= val <= 39:
+                        cell.fill = yellow
+                    elif 1 <= val <= 14:
+                        cell.fill = red
+                except Exception:
+                    pass
+        wb.save(new_file_path)
+
+    # Show in GUI Treeview
+    tree = ttk.Treeview(right_panel)
+    tree["columns"] = list(updated_data.columns)
+    tree["show"] = "headings"
+
+    for col in updated_data.columns:
+        tree.heading(col, text=col)
+        tree.column(col, width=120)
+
+    for _, row in updated_data.iterrows():
+        # Convert all to string for display
+        row_values = [str(val) if not pd.isna(val) else "" for val in row]
+        tree.insert("", "end", values=row_values)
+
+    tree.pack(expand=True, fill="both")
+
+def import_excel():
+    global data, imported_file_path
+    file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+    if file_path:
+        try:
+            # Read as strings to avoid dtype issues
+            data = pd.read_excel(file_path, dtype=str)
+
+            # If Expiry Date missing or empty, calculate it from Date + 60 days
+            if "Expiry Date" not in data.columns or data["Expiry Date"].isnull().all() or data["Expiry Date"].eq('').all():
+                if "Date" in data.columns:
+                    def calc_expiry(row):
+                        try:
+                            d = datetime.datetime.strptime(row["Date"], "%Y/%m/%d")
+                            return (d + datetime.timedelta(days=60)).strftime("%Y/%m/%d")
+                        except Exception:
+                            return ""
+                    data["Expiry Date"] = data.apply(calc_expiry, axis=1)
+                else:
+                    data["Expiry Date"] = ""
+
+            imported_file_path = file_path
+            messagebox.showinfo("Success", "Data imported.")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+def export_excel():
+    if data.empty:
+        messagebox.showerror("Error", "No data to export.")
+        return
+
+    def export_new_file():
+        file_path = filedialog.asksaveasfilename(defaultextension=".xlsx",
+                                                 filetypes=[("Excel files", "*.xlsx")])
+        if file_path:
+            try:
+                data.to_excel(file_path, index=False)
+                messagebox.showinfo("Success", "Data exported to new file.")
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+    def export_existing_file():
+        file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
+        if file_path:
+            try:
+                existing_data = pd.read_excel(file_path)
+                combined = pd.concat([existing_data, data], ignore_index=True)
+                combined.to_excel(file_path, index=False)
+                messagebox.showinfo("Success", "Data appended to existing file.")
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+    popup = tk.Toplevel(root)
+    popup.title("Export Options")
+    popup.geometry("300x120")
+    tk.Label(popup, text="Choose export method:", font=("Arial", 12)).pack(pady=10)
+    ttk.Button(popup, text="New File", command=lambda: [export_new_file(), popup.destroy()]).pack(pady=5)
+    ttk.Button(popup, text="Existing File", command=lambda: [export_existing_file(), popup.destroy()]).pack()
+
+def generate_barcode():
+    if data.empty:
+        messagebox.showerror("Error", "No data to generate barcodes.")
+        return
+
+    save_dir = filedialog.askdirectory(title="Select folder to save barcodes")
+    if not save_dir:
+        return
+
+    try:
+        for _, row in data.iterrows():
+            code = barcode.get('code128', str(row["ID"]), writer=ImageWriter())
+            filename = os.path.join(save_dir, f"{row['ID']}")
+            code.save(filename)
+        messagebox.showinfo("Success", "Barcodes generated and saved.")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to generate barcodes:\n{e}")
+
+# GUI setup
+root = tk.Tk()
+root.title("Data Manager")
+root.geometry("1000x650")
+
+left_panel = tk.Frame(root, bg="lightgray", width=150)
+left_panel.pack(side="left", fill="y")
+
+right_panel = tk.Frame(root, bg="white")
+right_panel.pack(side="right", expand=True, fill="both")
+
+ttk.Button(left_panel, text="Add Data", command=show_add_form).pack(pady=10, padx=8, fill="x")
+ttk.Button(left_panel, text="View Data", command=view_data).pack(pady=10, padx=8, fill="x")
+ttk.Button(left_panel, text="Import Excel", command=import_excel).pack(pady=10, padx=8, fill="x")
+ttk.Button(left_panel, text="Export Excel", command=export_excel).pack(pady=10, padx=8, fill="x")
+ttk.Button(left_panel, text="Generate Barcode", command=generate_barcode).pack(pady=10, padx=8, fill="x")
+
+content_label = tk.Label(right_panel, text="Welcome!", font=("Arial", 16), bg="white")
+content_label.pack(pady=20)
+
+root.mainloop()
+
