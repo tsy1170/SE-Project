@@ -1,228 +1,238 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 import pandas as pd
-import datetime
-import barcode
-from barcode.writer import ImageWriter
+import openpyxl
 import os
-from openpyxl import load_workbook
-from openpyxl.styles import PatternFill
+import shutil
+import json
+from datetime import datetime
 
-data = pd.DataFrame(columns=["Name", "ID", "Date", "Expiry Date"])
-imported_file_path = None
+# Constants
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+USERS_FILE = os.path.join(SCRIPT_DIR, "users.json")
+PENDING_DIR = os.path.join(SCRIPT_DIR, "pending_files")
+APPROVED_DIR = os.path.join(SCRIPT_DIR, "approved_files")
+BARCODE_REQUESTS_FILE = os.path.join(SCRIPT_DIR, "barcode_requests.csv")
 
-def add_data(name, id_, date_str, expiry_str):
-    global data
-    try:
-        # Validate input dates
-        input_date = datetime.datetime.strptime(date_str, "%Y/%m/%d")
-        expiry_date = datetime.datetime.strptime(expiry_str, "%Y/%m/%d")
-        if expiry_date <= input_date:
-            messagebox.showerror("Error", "Expiry Date must be after Date.")
-            return
-        new_row = {
-            "Name": name,
-            "ID": id_,
-            "Date": date_str,
-            "Expiry Date": expiry_str
-        }
-        data = pd.concat([data, pd.DataFrame([new_row])], ignore_index=True)
-        messagebox.showinfo("Success", "Data added successfully.")
-    except ValueError:
-        messagebox.showerror("Error", "Date format should be YYYY/MM/DD.")
+# Ensure necessary directories exist
+os.makedirs(PENDING_DIR, exist_ok=True)
+os.makedirs(APPROVED_DIR, exist_ok=True)
 
-def show_add_form():
-    for widget in right_panel.winfo_children():
-        widget.destroy()
+# Load user data (simulate login)
+def load_users():
+    if not os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "w") as f:
+            json.dump({"admin": {"password": "admin", "role": "admin"}}, f)
+    with open(USERS_FILE, "r") as f:
+        return json.load(f)
 
-    tk.Label(right_panel, text="Name").pack()
-    name_entry = tk.Entry(right_panel)
-    name_entry.pack()
+# Save user data
+def save_users(users):
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f, indent=2)
 
-    tk.Label(right_panel, text="ID").pack()
-    id_entry = tk.Entry(right_panel)
-    id_entry.pack()
+users_data = load_users()
 
-    tk.Label(right_panel, text="Date (YYYY/MM/DD)").pack()
-    date_entry = tk.Entry(right_panel)
-    date_entry.pack()
+# Prompt login
+username = simpledialog.askstring("Login", "Enter username:")
+password = simpledialog.askstring("Login", "Enter password:", show='*')
 
-    tk.Label(right_panel, text="Expiry Date (YYYY/MM/DD)").pack()
-    expiry_entry = tk.Entry(right_panel)
-    expiry_entry.pack()
+if username not in users_data or users_data[username]["password"] != password:
+    messagebox.showerror("Login Failed", "Invalid username or password.")
+    exit()
 
-    def submit():
-        add_data(name_entry.get(), id_entry.get(), date_entry.get(), expiry_entry.get())
+role = users_data[username]["role"]
+is_admin = role == "admin"
 
-    ttk.Button(right_panel, text="Submit", command=submit).pack(pady=10)
-
-def view_data():
-    global data, imported_file_path
-
-    for widget in right_panel.winfo_children():
-        widget.destroy()
-
-    if data.empty:
-        tk.Label(right_panel, text="No data available.").pack()
-        return
-
-    today = datetime.date.today()
-    updated_data = data.copy()
-
-    # Convert Expiry Date to datetime for calculation
-    updated_data["Expiry Date"] = pd.to_datetime(updated_data["Expiry Date"], errors="coerce")
-    # Calculate Days Left as int
-    updated_data["Days Left"] = (updated_data["Expiry Date"].dt.date - today).apply(lambda x: x.days)
-
-    # Convert Expiry Date back to string for display and export
-    updated_data["Expiry Date"] = updated_data["Expiry Date"].dt.strftime("%Y/%m/%d")
-
-    # Export to Excel with highlights if file imported
-    if imported_file_path:
-        base_name = os.path.splitext(os.path.basename(imported_file_path))[0]
-        new_file_path = os.path.join(os.path.dirname(imported_file_path), base_name + "_ExpiryDate.xlsx")
-        updated_data.to_excel(new_file_path, index=False)
-
-        wb = load_workbook(new_file_path)
-        ws = wb.active
-
-        days_left_col = None
-        for idx, col in enumerate(ws[1], 1):
-            if col.value == "Days Left":
-                days_left_col = idx
-                break
-
-        red = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-        yellow = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
-        green = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-
-        for row in ws.iter_rows(min_row=2):
-            cell = row[days_left_col - 1]
-            if cell.value is not None:
-                try:
-                    val = int(cell.value)
-                    if 40 <= val <= 60:
-                        cell.fill = green
-                    elif 15 <= val <= 39:
-                        cell.fill = yellow
-                    elif 1 <= val <= 14:
-                        cell.fill = red
-                except Exception:
-                    pass
-        wb.save(new_file_path)
-
-    # Show in GUI Treeview
-    tree = ttk.Treeview(right_panel)
-    tree["columns"] = list(updated_data.columns)
-    tree["show"] = "headings"
-
-    for col in updated_data.columns:
-        tree.heading(col, text=col)
-        tree.column(col, width=120)
-
-    for _, row in updated_data.iterrows():
-        # Convert all to string for display
-        row_values = [str(val) if not pd.isna(val) else "" for val in row]
-        tree.insert("", "end", values=row_values)
-
-    tree.pack(expand=True, fill="both")
-
-def import_excel():
-    global data, imported_file_path
-    file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
-    if file_path:
-        try:
-            # Read as strings to avoid dtype issues
-            data = pd.read_excel(file_path, dtype=str)
-
-            # If Expiry Date missing or empty, calculate it from Date + 60 days
-            if "Expiry Date" not in data.columns or data["Expiry Date"].isnull().all() or data["Expiry Date"].eq('').all():
-                if "Date" in data.columns:
-                    def calc_expiry(row):
-                        try:
-                            d = datetime.datetime.strptime(row["Date"], "%Y/%m/%d")
-                            return (d + datetime.timedelta(days=60)).strftime("%Y/%m/%d")
-                        except Exception:
-                            return ""
-                    data["Expiry Date"] = data.apply(calc_expiry, axis=1)
-                else:
-                    data["Expiry Date"] = ""
-
-            imported_file_path = file_path
-            messagebox.showinfo("Success", "Data imported.")
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-
-def export_excel():
-    if data.empty:
-        messagebox.showerror("Error", "No data to export.")
-        return
-
-    def export_new_file():
-        file_path = filedialog.asksaveasfilename(defaultextension=".xlsx",
-                                                 filetypes=[("Excel files", "*.xlsx")])
-        if file_path:
-            try:
-                data.to_excel(file_path, index=False)
-                messagebox.showinfo("Success", "Data exported to new file.")
-            except Exception as e:
-                messagebox.showerror("Error", str(e))
-
-    def export_existing_file():
-        file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
-        if file_path:
-            try:
-                existing_data = pd.read_excel(file_path)
-                combined = pd.concat([existing_data, data], ignore_index=True)
-                combined.to_excel(file_path, index=False)
-                messagebox.showinfo("Success", "Data appended to existing file.")
-            except Exception as e:
-                messagebox.showerror("Error", str(e))
-
-    popup = tk.Toplevel(root)
-    popup.title("Export Options")
-    popup.geometry("300x120")
-    tk.Label(popup, text="Choose export method:", font=("Arial", 12)).pack(pady=10)
-    ttk.Button(popup, text="New File", command=lambda: [export_new_file(), popup.destroy()]).pack(pady=5)
-    ttk.Button(popup, text="Existing File", command=lambda: [export_existing_file(), popup.destroy()]).pack()
-
-def generate_barcode():
-    if data.empty:
-        messagebox.showerror("Error", "No data to generate barcodes.")
-        return
-
-    save_dir = filedialog.askdirectory(title="Select folder to save barcodes")
-    if not save_dir:
-        return
-
-    try:
-        for _, row in data.iterrows():
-            code = barcode.get('code128', str(row["ID"]), writer=ImageWriter())
-            filename = os.path.join(save_dir, f"{row['ID']}")
-            code.save(filename)
-        messagebox.showinfo("Success", "Barcodes generated and saved.")
-    except Exception as e:
-        messagebox.showerror("Error", f"Failed to generate barcodes:\n{e}")
-
-# GUI setup
+# Tkinter app setup
 root = tk.Tk()
-root.title("Data Manager")
+root.title(f"Excel Manager ({role.title()})")
 root.geometry("1000x650")
 
-left_panel = tk.Frame(root, bg="lightgray", width=150)
+left_panel = tk.Frame(root, bg="lightgray", width=180)
 left_panel.pack(side="left", fill="y")
 
 right_panel = tk.Frame(root, bg="white")
 right_panel.pack(side="right", expand=True, fill="both")
 
-ttk.Button(left_panel, text="Add Data", command=show_add_form).pack(pady=10, padx=8, fill="x")
-ttk.Button(left_panel, text="View Data", command=view_data).pack(pady=10, padx=8, fill="x")
-ttk.Button(left_panel, text="Import Excel", command=import_excel).pack(pady=10, padx=8, fill="x")
-ttk.Button(left_panel, text="Export Excel", command=export_excel).pack(pady=10, padx=8, fill="x")
-ttk.Button(left_panel, text="Generate Barcode", command=generate_barcode).pack(pady=10, padx=8, fill="x")
+style = ttk.Style()
+style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=15)
 
-content_label = tk.Label(right_panel, text="Welcome!", font=("Arial", 16), bg="white")
-content_label.pack(pady=20)
+# Treeview globals
+tree = None
+tree_frame = None
 
+# Helper: Clear tree
+
+def clear_tree():
+    global tree, tree_frame
+    if tree:
+        tree.destroy()
+    if tree_frame:
+        tree_frame.destroy()
+
+# View all approved files
+def view_all():
+    clear_tree()
+    global tree, tree_frame
+
+    excel_files = [f for f in os.listdir(APPROVED_DIR) if f.endswith(('.xlsx', '.xls'))]
+    if not excel_files:
+        messagebox.showinfo("No Files", "No approved Excel files available.")
+        return
+
+    tree_frame = tk.Frame(right_panel, bg="white")
+    tree_frame.pack(expand=True, fill="both", padx=10, pady=10)
+
+    tree = ttk.Treeview(tree_frame)
+    tree.grid(row=0, column=0, sticky="nsew")
+
+    scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+    scrollbar_y.grid(row=0, column=1, sticky="ns")
+    scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+    scrollbar_x.grid(row=1, column=0, sticky="ew")
+
+    tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+    tree_frame.grid_rowconfigure(0, weight=1)
+    tree_frame.grid_columnconfigure(0, weight=1)
+
+    for file in excel_files:
+        try:
+            path = os.path.join(APPROVED_DIR, file)
+            df = pd.read_excel(path, engine="openpyxl")
+        except Exception as e:
+            continue
+
+        if df.empty:
+            continue
+
+        parent_id = tree.insert("", "end", text=file, open=True)
+        if not tree["columns"]:
+            tree["columns"] = list(df.columns)
+            tree["show"] = "tree headings"
+            for col in df.columns:
+                tree.heading(col, text=col)
+                tree.column(col, width=120, anchor="center")
+
+        for row in df.itertuples(index=False):
+            tree.insert(parent_id, "end", values=list(row))
+
+# Load file (goes to pending for approval)
+def load_file():
+    file_path = filedialog.askopenfilename(title="Select Excel File", filetypes=[("Excel files", "*.xlsx *.xls")])
+    if file_path:
+        dest_path = os.path.join(PENDING_DIR, f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{os.path.basename(file_path)}")
+        shutil.copy(file_path, dest_path)
+        messagebox.showinfo("Upload Complete", "File uploaded for admin approval.")
+
+# Admin: Approve or reject pending files
+def approve_files():
+    clear_tree()
+    global tree, tree_frame
+    pending_files = [f for f in os.listdir(PENDING_DIR) if f.endswith(('.xlsx', '.xls'))]
+    if not pending_files:
+        messagebox.showinfo("No Pending Files", "No files pending approval.")
+        return
+
+    tree_frame = tk.Frame(right_panel, bg="white")
+    tree_frame.pack(expand=True, fill="both")
+    tree = ttk.Treeview(tree_frame, columns=("filename", "action"), show="headings")
+    tree.heading("filename", text="Filename")
+    tree.heading("action", text="Action")
+
+    for f in pending_files:
+        tree.insert("", "end", values=(f, "Pending"))
+    tree.pack(fill="both", expand=True)
+
+    def approve():
+        sel = tree.selection()
+        for item in sel:
+            filename = tree.item(item)['values'][0]
+            shutil.move(os.path.join(PENDING_DIR, filename), os.path.join(APPROVED_DIR, filename))
+        messagebox.showinfo("Success", "Selected files approved.")
+        approve_files()
+
+    def reject():
+        sel = tree.selection()
+        for item in sel:
+            filename = tree.item(item)['values'][0]
+            os.remove(os.path.join(PENDING_DIR, filename))
+        messagebox.showinfo("Success", "Selected files rejected.")
+        approve_files()
+
+    btn_frame = tk.Frame(tree_frame)
+    btn_frame.pack()
+    ttk.Button(btn_frame, text="Approve", style="Bold.TButton", command=approve).pack(side="left", padx=5)
+    ttk.Button(btn_frame, text="Reject", style="Bold.TButton", command=reject).pack(side="left", padx=5)
+
+# Admin: Manage users
+def manage_users():
+    clear_tree()
+    users = load_users()
+
+    def add_user():
+        uname = simpledialog.askstring("Add User", "Enter new username:")
+        pwd = simpledialog.askstring("Password", "Enter password:", show='*')
+        if uname in users:
+            messagebox.showerror("Error", "User already exists.")
+        else:
+            users[uname] = {"password": pwd, "role": "user"}
+            save_users(users)
+            messagebox.showinfo("Success", f"User {uname} added.")
+
+    def del_user():
+        uname = simpledialog.askstring("Delete User", "Enter username to delete:")
+        if uname == "admin" or uname not in users:
+            messagebox.showerror("Error", "Invalid user.")
+        else:
+            del users[uname]
+            save_users(users)
+            messagebox.showinfo("Deleted", f"User {uname} deleted.")
+
+    tk.Label(right_panel, text="User Management", font=("Segoe UI", 14)).pack(pady=10)
+    tk.Button(right_panel, text="Add User", command=add_user).pack(pady=5)
+    tk.Button(right_panel, text="Delete User", command=del_user).pack(pady=5)
+
+# Admin: Approve barcode requests
+def approve_barcodes():
+    clear_tree()
+    if not os.path.exists(BARCODE_REQUESTS_FILE):
+        messagebox.showinfo("No Requests", "No barcode requests found.")
+        return
+    df = pd.read_csv(BARCODE_REQUESTS_FILE)
+    if df.empty:
+        messagebox.showinfo("No Requests", "No barcode requests available.")
+        return
+
+    tree_frame = tk.Frame(right_panel, bg="white")
+    tree_frame.pack(expand=True, fill="both")
+
+    tree = ttk.Treeview(tree_frame, columns=list(df.columns), show="headings")
+    for col in df.columns:
+        tree.heading(col, text=col)
+        tree.column(col, width=100)
+
+    for row in df.itertuples(index=False):
+        tree.insert("", "end", values=list(row))
+    tree.pack(fill="both", expand=True)
+
+    def approve():
+        messagebox.showinfo("Approved", "(Simulated) Barcode requests approved.")
+
+    tk.Button(tree_frame, text="Approve All", command=approve).pack(pady=5)
+
+# Left panel buttons
+btn_view = ttk.Button(left_panel, text="View All", style="Bold.TButton", command=view_all)
+btn_view.pack(pady=5, padx=10)
+
+btn_load = ttk.Button(left_panel, text="Upload File", style="Bold.TButton", command=load_file)
+btn_load.pack(pady=5, padx=10)
+
+if is_admin:
+    ttk.Button(left_panel, text="Approve Files", style="Bold.TButton", command=approve_files).pack(pady=5, padx=10)
+    ttk.Button(left_panel, text="Manage Users", style="Bold.TButton", command=manage_users).pack(pady=5, padx=10)
+    ttk.Button(left_panel, text="Barcode Requests", style="Bold.TButton", command=approve_barcodes).pack(pady=5, padx=10)
+
+# Run UI
+view_all()
 root.mainloop()
-
