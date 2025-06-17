@@ -1,5 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from tkinter.simpledialog import askstring
+from tkcalendar import DateEntry
 import pandas as pd
 import openpyxl
 import os
@@ -10,142 +12,176 @@ from datetime import datetime
 
 tree = None
 tree_frame = None
+loaded_files = set()
 
-# def button_clicked(name):
-#     # content_label.config(text=f"{name} button clicked!")
 
-def view_all():
+def insert_data_into_tree(file_name, df):
     global tree, tree_frame
-    if tree:
-        tree.destroy()
 
-    if tree_frame:
-        tree_frame.destroy()
+    # Create tree_frame and tree if not already created
+    if not tree_frame:
+        tree_frame = tk.Frame(right_panel, bg="white")
+        tree_frame.pack(expand=True, fill="both", padx=10, pady=10)
 
-    # Get script directory
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    excel_files = [f for f in os.listdir(script_dir) if f.endswith((".xlsx", ".xls"))]
+    if not tree:
+        tree = ttk.Treeview(tree_frame)
+        tree.grid(row=0, column=0, sticky="nsew")
 
-    if not excel_files:
-        messagebox.showerror("Error", "No Excel files found.")
+        scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        scrollbar_y.grid(row=0, column=1, sticky="ns")
+
+        scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+        scrollbar_x.grid(row=1, column=0, sticky="ew")
+
+        tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
+
+    # If columns are not set, initialize them
+    if not tree["columns"]:
+        tree["columns"] = list(df.columns)
+        tree["show"] = "tree headings"
+        for col in df.columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=120, anchor="center")
+
+    # If columns are already set, check for mismatch
+    elif list(df.columns) != list(tree["columns"]):
+        messagebox.showwarning("Column Mismatch", f"File '{file_name}' skipped due to column mismatch.")
         return
 
-    # Frame to hold the treeview and scrollbars
-    tree_frame = tk.Frame(right_panel, bg="white")
-    tree_frame.pack(expand=True, fill="both", padx=10, pady=10)
+    parent_id = tree.insert("", "end", text=file_name, open=True)
+    for _, row in df.iterrows():
+        tree.insert(parent_id, "end", values=list(row))
 
-    # Create Treeview
-    tree = ttk.Treeview(tree_frame)
-    tree.grid(row=0, column=0, sticky="nsew")
 
-    # Create Scrollbars
-    scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
-    scrollbar_y.grid(row=0, column=1, sticky="ns")
 
-    scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
-    scrollbar_x.grid(row=1, column=0, sticky="ew")
+def load_excel_file():
+    global loaded_files
 
-    # Configure Treeview scroll commands
-    tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+    file_paths = filedialog.askopenfilenames(
+        title="Select Excel File(s)",
+        filetypes=[("Excel files", "*.xlsx *.xls")]
+    )
 
-    # Allow treeview frame to expand
-    tree_frame.grid_rowconfigure(0, weight=1)
-    tree_frame.grid_columnconfigure(0, weight=1)
+    if not file_paths:
+        return
 
-    # Process each file
-    for file in excel_files:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    for file_path in file_paths:
+        file_name = os.path.basename(file_path)
+
+        # Skip if already loaded
+        if file_name in loaded_files:
+            messagebox.showinfo("Skipped", f"'{file_name}' is already loaded.")
+            continue
+
         try:
-            file_path = os.path.join(script_dir, file)
             df = pd.read_excel(file_path, engine="openpyxl")
         except Exception as e:
-            print(f"Failed to read {file}: {e}")
+            messagebox.showerror("Error", f"Could not read file:\n{file_path}\n\n{e}")
             continue
 
         if df.empty:
             continue
 
-        parent_id = tree.insert("", "end", text=file, open=True)
-
-        if not tree["columns"]:
-            tree["columns"] = list(df.columns)
-            tree["show"] = "tree headings"
-
-            for col in df.columns:
-                tree.heading(col, text=col)
-                tree.column(col, width=120, anchor="center")
-
-        for row in df.itertuples(index=False):
-            tree.insert(parent_id, "end", values=list(row))
-
-
-
-
-def load_excel_file():
-    file_path = filedialog.askopenfilename(
-        title="Select Excel File",
-        filetypes=[("Excel files", "*.xlsx *.xls")]
-    )
-
-    if file_path:
         try:
-            # Use engine to avoid auto-detection issues
-            df = pd.read_excel(file_path, engine="openpyxl")
-
-            # Get the directory where the current script is located
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-
-            # Destination path in the same directory as the script
-            destination_path = os.path.join(script_dir, os.path.basename(file_path))
-
-            # Move the file
-            shutil.move(file_path, destination_path)
-
-            messagebox.showinfo("Successful", "The file has been load into the system.\nClick View all to view the data.")
-
-            view_all()
-
-        #     # Create new Treeview
-        #     tree = ttk.Treeview(right_panel)
-        #     tree.pack(expand=True, fill="both", padx=10, pady=10)
-        #
-        #     # Define columns
-        #     tree["columns"] = list(df.columns)
-        #     tree["show"] = "headings"
-        #
-        #     for col in df.columns:
-        #         tree.heading(col, text=col)
-        #         tree.column(col, width=100, anchor="center")
-        #
-        #     # Insert rows
-        #     for _, row in df.iterrows():
-        #         tree.insert("", "end", values=list(row))
-        #
+            insert_data_into_tree(file_name, df)
+            loaded_files.add(file_name)
         except Exception as e:
-            messagebox.showerror("Error", f"Could not load file:\n{e}")
+            messagebox.showerror("Error", f"Failed to insert data:\n{e}")
+
+    messagebox.showinfo("Done", "File(s) loaded successfully.")
+
+
+def clear_all():
+    global tree, tree_frame, loaded_files
+
+    if tree:
+        tree.destroy()
+        tree = None
+
+    if tree_frame:
+        tree_frame.destroy()
+        tree_frame = None
+
+    loaded_files.clear()
 
 
 def create_new_excel_file():
-    # File name based on current date
-    date_str = datetime.now().strftime("%Y-%m-%d")
+    global tree, tree_frame
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_dir, f"{date_str}.xlsx")
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    default_file_name = f"{date_str}.xlsx"
+    default_file_path = os.path.join(script_dir, default_file_name)
 
-    # Data entry form
+    use_default = messagebox.askyesno("Create New File", f"Use default file name: {default_file_name}?")
+
+    if use_default:
+        file_path = default_file_path
+        file_name = default_file_name
+    else:
+        user_input = askstring("File Name", "Enter a name for the new Excel file (without extension):")
+        if not user_input:
+            return  # Cancelled
+        file_name = f"{user_input}.xlsx"
+        file_path = os.path.join(script_dir, file_name)
+
+    # If file exists, just load it
+    if os.path.exists(file_path):
+        if file_name in loaded_files:
+            messagebox.showinfo("Already Loaded", f"The file '{file_name}' is already loaded and displayed.")
+            return
+
+        try:
+            df = pd.read_excel(file_path, engine="openpyxl")
+            # Create tree_frame and tree if not already created
+            insert_data_into_tree(file_name, df)
+            loaded_files.add(file_name)
+            if df.empty:
+                messagebox.showinfo("Empty File", f"'{file_name}' is empty. You can add data.")
+            return
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not load file:\n{e}")
+            return
+
+    # File doesn't exist - create new and prompt for data entry
     form = tk.Toplevel(root)
-    form.title("Create New Excel File")
-    form.geometry("450x300")
+    form.title("Add data")
+    form.geometry("450x200")
 
-    fields = ["Product ID", "Product Name", "Product Description", "Test Date"]
+    fields = ["Product ID", "Product Name", "Product Description", "Maturation date"]
     entries = {}
 
-    for i, field in enumerate(fields):
-        tk.Label(form, text=field).grid(row=i, column=0, sticky="e", padx=10, pady=5)
-        entry = tk.Entry(form, width=40)
-        entry.grid(row=i, column=1, padx=10, pady=5)
-        entries[field] = entry
+    for i, col in enumerate(fields):
+        tk.Label(form, text=col).grid(row=i, column=0, sticky="e", padx=10, pady=5)
+        if col == "Maturation date":
+            date_entry = DateEntry(form, width=28, background='grey',
+                                   foreground='white', borderwidth=1, date_pattern='dd-mm-yyyy', mindate=datetime.now())
+            date_entry.grid(row=i, column=1, pady=5, padx=5)
+            entries[col] = date_entry
+        else:
+            entry = tk.Entry(form, width=30)
+            entry.grid(row=i, column=1, pady=5, padx=5)
+            entries[col] = entry
 
     def save_file():
-        data = {field: entry.get().strip() for field, entry in entries.items()}
+        data = {}
+        for field, entry in entries.items():
+            value = entry.get().strip()
+            if field == "Maturation date":
+                try:
+                    selected_date = datetime.strptime(value, "%d-%m-%Y")
+                    if selected_date.date() < datetime.today().date():
+                        raise ValueError("Date must not be in the past.")
+                    data[field] = selected_date.strftime("%d-%m-%Y")
+                except Exception as e:
+                    messagebox.showerror("Date Error", f"Invalid date: {e}")
+                    return
+            else:
+                data[field] = value
 
         if not all(data.values()):
             messagebox.showerror("Input Error", "Please fill out all fields.")
@@ -154,9 +190,10 @@ def create_new_excel_file():
         try:
             df = pd.DataFrame([data])
             df.to_excel(file_path, index=False, engine="openpyxl")
-            messagebox.showinfo("Success", f"File saved as {file_path}")
+            loaded_files.add(file_name)
+            insert_data_into_tree(file_name, df)
+            messagebox.showinfo("Success", f"File '{file_name}' created and saved.")
             form.destroy()
-            view_all()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save file:\n{e}")
 
@@ -165,20 +202,20 @@ def create_new_excel_file():
 
 def add_data_to_selected_file():
     if not tree:
-        messagebox.showwarning("No Selection", "Please select an Excel file node.")
+        messagebox.showwarning("No Tree", "No data available.")
         return
 
     selected = tree.selection()
     if not selected:
-        messagebox.showwarning("No Selection", "Please select an Excel file node.")
+        messagebox.showwarning("No Selection", "Please select a file or row.")
         return
 
-    # Get the parent node (Excel file name)
+    # Find the file node (root of selected branch)
     selected_item = selected[0]
-    while tree.parent(selected_item):  # Traverse up to the file node
+    while tree.parent(selected_item):
         selected_item = tree.parent(selected_item)
-    file_name = tree.item(selected_item, "text")
 
+    file_name = tree.item(selected_item, "text")
     file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
 
     try:
@@ -187,32 +224,60 @@ def add_data_to_selected_file():
         messagebox.showerror("Error", f"Failed to read file:\n{e}")
         return
 
-    # Simple form to enter new row data
     form = tk.Toplevel(root)
-    form.title("Add Data")
-    form.geometry("400x300")
+    form.title(f"Add Data to {file_name}")
+    form.geometry("400x200")
 
     entries = {}
     for i, col in enumerate(df.columns):
         tk.Label(form, text=col).grid(row=i, column=0, sticky="e", pady=5, padx=5)
-        entry = tk.Entry(form, width=30)
-        entry.grid(row=i, column=1, pady=5, padx=5)
-        entries[col] = entry
+        if col == "Maturation date":
+            date_entry = DateEntry(form, width=28, background='grey',
+                                   foreground='white', borderwidth=1, date_pattern='dd-mm-yyyy', mindate=datetime.now())
+            date_entry.grid(row=i, column=1, pady=5, padx=5)
+            entries[col] = date_entry
+        else:
+            entry = tk.Entry(form, width=30)
+            entry.grid(row=i, column=1, pady=5, padx=5)
+            entries[col] = entry
 
     def submit():
-        new_data = {}
+        new_row = {}
         for col, entry in entries.items():
-            new_data[col] = entry.get()
+            value = entry.get().strip()
+            if col == "Maturation date":
+                try:
+                    selected_date = datetime.strptime(value, "%d-%m-%Y")
+                    if selected_date.date() < datetime.today().date():
+                        raise ValueError("Date must not be in the past.")
+                    new_row[col] = selected_date.strftime("%d-%m-%Y")
+                except Exception as e:
+                    messagebox.showerror("Date Error", f"Invalid date: {e}")
+                    return
+            else:
+                new_row[col] = str(value)
+
+        if not all(new_row.values()):
+            messagebox.showerror("Input Error", "Please fill in all fields.")
+            return
+
         try:
-            df.loc[len(df)] = new_data
+            df.loc[len(df)] = new_row
             df.to_excel(file_path, index=False, engine="openpyxl")
-            messagebox.showinfo("Success", "Data added successfully.")
+
+            for child in tree.get_children(selected_item):
+                tree.delete(child)
+            for _, row in df.iterrows():
+                tree.insert(selected_item, "end", values=list(row))
+
+            messagebox.showinfo("Success", "Data added and displayed.")
             form.destroy()
-            view_all()  # Refresh view
         except Exception as e:
             messagebox.showerror("Error", f"Failed to add data:\n{e}")
 
     tk.Button(form, text="Submit", command=submit).grid(row=len(df.columns), columnspan=2, pady=10)
+
+
 
 
 def delete_selected_data():
@@ -242,22 +307,124 @@ def delete_selected_data():
         messagebox.showerror("Error", f"Could not read file:\n{e}")
         return
 
-    # Get values from selected tree row
     row_values = tree.item(item, "values")
 
-    # Confirm before deleting
     confirm = messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete this row?\n\n{row_values}")
     if not confirm:
         return
 
-    # Find row to delete
     try:
+        # Filter out the matching row from DataFrame
         df = df[~(df.astype(str) == pd.Series(row_values, index=df.columns).astype(str)).all(axis=1)]
+
+        # Save updated data
         df.to_excel(file_path, index=False, engine="openpyxl")
+
+        # Remove item from Treeview
+        tree.delete(item)
+
         messagebox.showinfo("Deleted", "Selected row has been deleted.")
-        view_all()
+
     except Exception as e:
         messagebox.showerror("Error", f"Failed to delete data:\n{e}")
+
+
+def edit_selected_data():
+    if not tree:
+        messagebox.showwarning("No Tree", "No data available.")
+        return
+
+    selected_item = tree.selection()
+    if not selected_item:
+        messagebox.showwarning("No Selection", "Please select a data row to edit.")
+        return
+
+    item = selected_item[0]
+    parent = tree.parent(item)
+
+    if not parent:
+        messagebox.showwarning("Invalid Selection", "Please select a data row, not a file name.")
+        return
+
+    file_name = tree.item(parent, "text")
+    file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
+
+    try:
+        df = pd.read_excel(file_path, engine="openpyxl")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to read file:\n{e}")
+        return
+
+    row_values = tree.item(item, "values")
+    original_index = None
+
+    # Find the index of the selected row in the DataFrame
+    for i, row in df.iterrows():
+        if all(str(row[col]) == str(row_values[j]) for j, col in enumerate(df.columns)):
+            original_index = i
+            break
+
+    if original_index is None:
+        messagebox.showerror("Error", "Could not find the selected row in the file.")
+        return
+
+    form = tk.Toplevel(root)
+    form.title(f"Edit Data in {file_name}")
+    form.geometry("400x200")
+
+    entries = {}
+    for i, col in enumerate(df.columns):
+        tk.Label(form, text=col).grid(row=i, column=0, sticky="e", pady=5, padx=5)
+        if col == "Maturation date":
+            date_entry = DateEntry(form, width=28, background='grey',
+                                   foreground='white', borderwidth=1, date_pattern='dd-mm-yyyy', mindate=datetime.now())
+            date_entry.set_date(datetime.strptime(row_values[i], "%d-%m-%Y"))
+            date_entry.grid(row=i, column=1, pady=5, padx=5)
+            entries[col] = date_entry
+        else:
+            entry = tk.Entry(form, width=30)
+            entry.insert(0, row_values[i])
+            entry.grid(row=i, column=1, pady=5, padx=5)
+            entries[col] = entry
+
+    def save_edit():
+        updated_row = {}
+        for col, entry in entries.items():
+            value = entry.get().strip()
+            if col == "Maturation date":
+                try:
+                    selected_date = datetime.strptime(value, "%d-%m-%Y")
+                    if selected_date.date() < datetime.today().date():
+                        raise ValueError("Date must not be in the past.")
+                    updated_row[col] = selected_date.strftime("%d-%m-%Y")
+                except Exception as e:
+                    messagebox.showerror("Date Error", f"Invalid date: {e}")
+                    return
+            else:
+                updated_row[col] = str(value)
+
+        if not all(updated_row.values()):
+            messagebox.showerror("Input Error", "Please fill in all fields.")
+            return
+
+        try:
+            # Update the DataFrame and save
+            df.loc[original_index] = updated_row
+            df.to_excel(file_path, index=False, engine="openpyxl")
+
+            # Refresh Treeview
+            for child in tree.get_children(parent):
+                tree.delete(child)
+            for _, row in df.iterrows():
+                tree.insert(parent, "end", values=list(row))
+
+            messagebox.showinfo("Updated", "Data updated successfully.")
+            form.destroy()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update data:\n{e}")
+
+    tk.Button(form, text="Save", command=save_edit).grid(row=len(df.columns), columnspan=2, pady=10)
+
 
 
 def generate_barcode():
@@ -301,8 +468,6 @@ def generate_barcode():
 
 # Create main window
 root = tk.Tk()
-# icon = tk.PhotoImage(file="transparent.png")
-# root.iconphoto(False, icon)
 root.title("Test")
 root.geometry("1000x650")
 
@@ -320,10 +485,10 @@ style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=
 btn1 = ttk.Button(left_panel, text="Load File", style="Bold.TButton", command=load_excel_file)
 btn1.pack(pady=(10,3), padx=8, fill="x")
 
-btn2 = ttk.Button(left_panel, text="View all", style="Bold.TButton", command=view_all)
+btn2 = ttk.Button(left_panel, text="Clear all", style="Bold.TButton", command=clear_all)
 btn2.pack(pady=3, padx=8, fill="x")
 
-btn3 = ttk.Button(left_panel, text="Add Batch", style="Bold.TButton", command=create_new_excel_file)
+btn3 = ttk.Button(left_panel, text="Add Files", style="Bold.TButton", command=create_new_excel_file)
 btn3.pack(pady=3, padx=8, fill="x")
 
 # Top bar frame in right panel to hold buttons
@@ -337,10 +502,11 @@ btn4.pack(side="right", pady=(10,0), padx=5)
 btn5 = ttk.Button(top_bar, text="Delete", style="Bold.TButton", width=15, command=delete_selected_data)
 btn5.pack(side="right", pady=(10,0), padx=5)
 
-btn6 = ttk.Button(top_bar, text="Barcode", style="Bold.TButton", width=15, command=generate_barcode)
+btn6 = ttk.Button(top_bar, text="Edit", style="Bold.TButton", width=15, command=edit_selected_data)
 btn6.pack(side="right", pady=(10,0), padx=5)
 
-view_all()
+btn7 = ttk.Button(top_bar, text="Barcode", style="Bold.TButton", width=15, command=generate_barcode)
+btn7.pack(side="right", pady=(10,0), padx=5)
 
 # Start the main event loop
 root.mainloop()
