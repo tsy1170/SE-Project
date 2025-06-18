@@ -191,9 +191,6 @@ def create_new_excel_file(root, right_panel):
     tk.Button(form, text="Save", command=save_file).grid(row=len(fields), columnspan=2, pady=15)
 
 
-def show_pending():
-    data = None
-
 
 def add_data_to_selected_file(root):
     if not tree:
