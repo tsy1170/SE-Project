@@ -5,17 +5,23 @@ from tkcalendar import DateEntry
 import pandas as pd
 import openpyxl
 import os
-import shutil
 import barcode
 from barcode.writer import ImageWriter
-from datetime import datetime
+from datetime import datetime, timezone
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 tree = None
 tree_frame = None
-loaded_files = set()
+top_bar = None
+
+# --- Firestore Setup ---
+cred = credentials.Certificate("se-project-ad0dd-firebase-adminsdk-fbsvc-beb7183669.json")
+firebase_admin.initialize_app(cred)
+db = firestore.client()
 
 
-def insert_data_into_tree(file_name, df):
+def insert_data_into_tree(file_name, df, right_panel):
     global tree, tree_frame
 
     # Create tree_frame and tree if not already created
@@ -56,8 +62,7 @@ def insert_data_into_tree(file_name, df):
 
 
 
-def load_excel_file():
-    global loaded_files
+def load_excel_file(right_panel, root):
 
     file_paths = filedialog.askopenfilenames(
         title="Select Excel File(s)",
@@ -67,15 +72,10 @@ def load_excel_file():
     if not file_paths:
         return
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    load_file_layout(right_panel, root)
 
     for file_path in file_paths:
         file_name = os.path.basename(file_path)
-
-        # Skip if already loaded
-        if file_name in loaded_files:
-            messagebox.showinfo("Skipped", f"'{file_name}' is already loaded.")
-            continue
 
         try:
             df = pd.read_excel(file_path, engine="openpyxl")
@@ -87,16 +87,18 @@ def load_excel_file():
             continue
 
         try:
-            insert_data_into_tree(file_name, df)
-            loaded_files.add(file_name)
+            insert_data_into_tree(file_name, df, right_panel)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to insert data:\n{e}")
 
     messagebox.showinfo("Done", "File(s) loaded successfully.")
 
 
-def clear_all():
-    global tree, tree_frame, loaded_files
+def clear_right_panel(right_panel):
+    global tree, tree_frame
+
+    for widget in right_panel.winfo_children():
+        widget.destroy()
 
     if tree:
         tree.destroy()
@@ -106,12 +108,8 @@ def clear_all():
         tree_frame.destroy()
         tree_frame = None
 
-    loaded_files.clear()
 
-
-def create_new_excel_file():
-    global tree, tree_frame
-
+def create_new_excel_file(root, right_panel):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     date_str = datetime.now().strftime("%Y-%m-%d")
     default_file_name = f"{date_str}.xlsx"
@@ -129,17 +127,11 @@ def create_new_excel_file():
         file_name = f"{user_input}.xlsx"
         file_path = os.path.join(script_dir, file_name)
 
-    # If file exists, just load it
-    if os.path.exists(file_path):
-        if file_name in loaded_files:
-            messagebox.showinfo("Already Loaded", f"The file '{file_name}' is already loaded and displayed.")
-            return
 
         try:
             df = pd.read_excel(file_path, engine="openpyxl")
             # Create tree_frame and tree if not already created
             insert_data_into_tree(file_name, df)
-            loaded_files.add(file_name)
             if df.empty:
                 messagebox.showinfo("Empty File", f"'{file_name}' is empty. You can add data.")
             return
@@ -152,12 +144,12 @@ def create_new_excel_file():
     form.title("Add data")
     form.geometry("450x200")
 
-    fields = ["Product ID", "Product Name", "Product Description", "Maturation date"]
+    fields = ["Product ID", "Product Name", "Product Description", "Test date"]
     entries = {}
 
     for i, col in enumerate(fields):
         tk.Label(form, text=col).grid(row=i, column=0, sticky="e", padx=10, pady=5)
-        if col == "Maturation date":
+        if col == "Test date":
             date_entry = DateEntry(form, width=28, background='grey',
                                    foreground='white', borderwidth=1, date_pattern='dd-mm-yyyy', mindate=datetime.now())
             date_entry.grid(row=i, column=1, pady=5, padx=5)
@@ -171,7 +163,7 @@ def create_new_excel_file():
         data = {}
         for field, entry in entries.items():
             value = entry.get().strip()
-            if field == "Maturation date":
+            if field == "Test date":
                 try:
                     selected_date = datetime.strptime(value, "%d-%m-%Y")
                     if selected_date.date() < datetime.today().date():
@@ -190,8 +182,7 @@ def create_new_excel_file():
         try:
             df = pd.DataFrame([data])
             df.to_excel(file_path, index=False, engine="openpyxl")
-            loaded_files.add(file_name)
-            insert_data_into_tree(file_name, df)
+            insert_data_into_tree(file_name, df, right_panel)
             messagebox.showinfo("Success", f"File '{file_name}' created and saved.")
             form.destroy()
         except Exception as e:
@@ -200,7 +191,11 @@ def create_new_excel_file():
     tk.Button(form, text="Save", command=save_file).grid(row=len(fields), columnspan=2, pady=15)
 
 
-def add_data_to_selected_file():
+def show_pending():
+    data = None
+
+
+def add_data_to_selected_file(root):
     if not tree:
         messagebox.showwarning("No Tree", "No data available.")
         return
@@ -226,26 +221,35 @@ def add_data_to_selected_file():
 
     form = tk.Toplevel(root)
     form.title(f"Add Data to {file_name}")
-    form.geometry("400x200")
+    form.geometry("400x250")
 
     entries = {}
     for i, col in enumerate(df.columns):
         tk.Label(form, text=col).grid(row=i, column=0, sticky="e", pady=5, padx=5)
-        if col == "Maturation date":
-            date_entry = DateEntry(form, width=28, background='grey',
+        if col == "Test date":
+            date_entry = DateEntry(form, width=30, background='grey',
                                    foreground='white', borderwidth=1, date_pattern='dd-mm-yyyy', mindate=datetime.now())
             date_entry.grid(row=i, column=1, pady=5, padx=5)
             entries[col] = date_entry
+        elif col == "Product Description":
+            text_desc = tk.Text(form, height=3, width=30, font=("Arial", 9))
+            text_desc.grid(row=i, column=1, pady=5, padx=5)
+            entries[col] = text_desc
         else:
-            entry = tk.Entry(form, width=30)
+            entry = tk.Entry(form, width=30, font=("Arial", 9))
             entry.grid(row=i, column=1, pady=5, padx=5)
             entries[col] = entry
+
 
     def submit():
         new_row = {}
         for col, entry in entries.items():
-            value = entry.get().strip()
-            if col == "Maturation date":
+            if isinstance(entry, tk.Text):
+                value = entry.get("1.0", "end-1c").strip()
+            else:
+                value = entry.get().strip()
+
+            if col == "Test date":
                 try:
                     selected_date = datetime.strptime(value, "%d-%m-%Y")
                     if selected_date.date() < datetime.today().date():
@@ -329,7 +333,7 @@ def delete_selected_data():
         messagebox.showerror("Error", f"Failed to delete data:\n{e}")
 
 
-def edit_selected_data():
+def edit_selected_data(root):
     if not tree:
         messagebox.showwarning("No Tree", "No data available.")
         return
@@ -375,7 +379,7 @@ def edit_selected_data():
     entries = {}
     for i, col in enumerate(df.columns):
         tk.Label(form, text=col).grid(row=i, column=0, sticky="e", pady=5, padx=5)
-        if col == "Maturation date":
+        if col == "Test date":
             date_entry = DateEntry(form, width=28, background='grey',
                                    foreground='white', borderwidth=1, date_pattern='dd-mm-yyyy', mindate=datetime.now())
             date_entry.set_date(datetime.strptime(row_values[i], "%d-%m-%Y"))
@@ -391,7 +395,7 @@ def edit_selected_data():
         updated_row = {}
         for col, entry in entries.items():
             value = entry.get().strip()
-            if col == "Maturation date":
+            if col == "Test date":
                 try:
                     selected_date = datetime.strptime(value, "%d-%m-%Y")
                     if selected_date.date() < datetime.today().date():
@@ -465,48 +469,205 @@ def generate_barcode():
         messagebox.showerror("Error", f"Failed to generate barcode:\n{e}")
 
 
+def add_new_batch_to_pending(right_panel, root):
+    form = tk.Toplevel(root)
+    form.title("Add new Batch")
+    form.geometry("400x200")
 
-# Create main window
-root = tk.Tk()
-root.title("Test")
-root.geometry("1000x650")
+    ttk.Label(form, text="Product ID").grid(row=1, column=0, sticky="e", pady=5, padx=5)
+    entry_id = ttk.Entry(form, width=30, font=("Arial", 9))
+    entry_id.grid(row=1, column=1, pady=5, padx=5)
 
-# Create frames for left and right panels
-left_panel = tk.Frame(root, bg="lightgray", width=150)
-left_panel.pack(side="left", fill="y")
+    ttk.Label(form, text="Product Name").grid(row=2, column=0, sticky="e", pady=5, padx=5)
+    entry_name = ttk.Entry(form, width=30, font=("Arial", 9))
+    entry_name.grid(row=2, column=1, pady=5, padx=5)
 
-right_panel = tk.Frame(root, bg="white")
-right_panel.pack(side="right", expand=True, fill="both")
+    ttk.Label(form, text="Description").grid(row=3, column=0, sticky="e", pady=5, padx=5)
+    text_desc = tk.Text(form, height=3, width=30, font=("Arial", 9))
+    text_desc.grid(row=3, column=1, pady=5, padx=5)
 
-style = ttk.Style()
-style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=15)
+    ttk.Label(form, text="Test Date").grid(row=4, column=0, sticky="e", pady=5, padx=5)
+    date_entry = DateEntry(form, width=30, background='gray',
+                           foreground='white', borderwidth=2, date_pattern='dd-mm-yyyy')
+    date_entry.grid(row=4, column=1, pady=5, padx=5)
 
-# Add buttons to left panel
-btn1 = ttk.Button(left_panel, text="Load File", style="Bold.TButton", command=load_excel_file)
-btn1.pack(pady=(10,3), padx=8, fill="x")
+    def submit():
+        product_id = entry_id.get().strip()
+        name = entry_name.get().strip()
+        desc = text_desc.get("1.0", tk.END).strip()
+        test_date = date_entry.get_date()
 
-btn2 = ttk.Button(left_panel, text="Clear all", style="Bold.TButton", command=clear_all)
-btn2.pack(pady=3, padx=8, fill="x")
+        data = {
+            "Product ID": product_id,
+            "Product Name": name,
+            "Description": desc,
+            "Test Date": test_date.strftime("%Y-%m-%d"),
+            "Submitted At": datetime.now(timezone.utc)
+        }
 
-btn3 = ttk.Button(left_panel, text="Add Files", style="Bold.TButton", command=create_new_excel_file)
-btn3.pack(pady=3, padx=8, fill="x")
+        try:
+            db.collection("Pending").document(product_id).set(data)
+            messagebox.showinfo("Success", "Product submitted for approval.")
 
-# Top bar frame in right panel to hold buttons
-top_bar = tk.Frame(right_panel, bg="white")
-top_bar.pack(fill="x", padx=8, pady=5)
+            entry_id.delete(0, tk.END)
+            entry_name.delete(0, tk.END)
+            text_desc.delete("1.0", tk.END)
+            date_entry.set_date(datetime.today())
 
-# Add a label in the right panel for content
-btn4 = ttk.Button(top_bar, text="Add", style="Bold.TButton", width=15, command=add_data_to_selected_file)
-btn4.pack(side="right", pady=(10,0), padx=5)
+            form.lift()
+            form.focus_force()
 
-btn5 = ttk.Button(top_bar, text="Delete", style="Bold.TButton", width=15, command=delete_selected_data)
-btn5.pack(side="right", pady=(10,0), padx=5)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save: {e}")
 
-btn6 = ttk.Button(top_bar, text="Edit", style="Bold.TButton", width=15, command=edit_selected_data)
-btn6.pack(side="right", pady=(10,0), padx=5)
+    tk.Button(form, text="Save", command=submit).grid(row=9, columnspan=2, pady=10)
 
-btn7 = ttk.Button(top_bar, text="Barcode", style="Bold.TButton", width=15, command=generate_barcode)
-btn7.pack(side="right", pady=(10,0), padx=5)
 
-# Start the main event loop
-root.mainloop()
+def load_pending_to_tree(right_panel):
+    global tree, tree_frame
+
+    if not tree_frame:
+        tree_frame = tk.Frame(right_panel, bg="white")
+        tree_frame.pack(expand=True, fill="both", padx=10, pady=10)
+    if not tree:
+        tree = ttk.Treeview(tree_frame, columns=("Product ID", "Product Name", "Description", "Test Date", "Submitted At"),
+            show="headings")
+        tree.heading("Product ID", text="Product ID")
+        tree.heading("Product Name", text="Product Name")
+        tree.heading("Description", text="Description")
+        tree.heading("Test Date", text="Test Date")
+        tree.heading("Submitted At", text="Submitted At")
+
+        tree.pack(fill="both", expand=True, pady=10)
+        tree.grid(row=0, column=0, sticky="nsew")
+
+        scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        scrollbar_y.grid(row=0, column=1, sticky="ns")
+
+        scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+        scrollbar_x.grid(row=1, column=0, sticky="ew")
+
+        tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
+
+
+    try:
+        # Fetch all documents from the "Pending" collection
+        docs = db.collection("Pending").stream()
+
+        for doc in docs:
+            data = doc.to_dict()
+            tree.insert("", "end", values=(
+                data.get("Product ID", ""),
+                data.get("Product Name", ""),
+                data.get("Description", ""),
+                data.get("Test Date", ""),
+                data.get("Submitted At", "").strftime("%d-%m-%y ") if isinstance(data.get("Submitted At"),
+                                                                                      datetime) else ""
+            ))
+        # print([doc.to_dict() for doc in db.collection("Pending").stream()])
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to load pending data:\n{e}")
+
+
+
+def add_batch_layout(right_panel, root):
+    global top_bar
+
+    clear_right_panel(right_panel)
+
+    if top_bar is not None:
+        top_bar.destroy()
+        top_bar = None
+
+    if top_bar is None:
+        # Top bar frame in right panel to hold buttons
+        top_bar = tk.Frame(right_panel, bg="white")
+        top_bar.pack(fill="x", padx=8, pady=5)
+
+        btn_add = ttk.Button(top_bar, text="Add", style="Bold.TButton", width=15, command=lambda: add_new_batch_to_pending(right_panel, root))
+        btn_add.pack(side="right", pady=(10, 0), padx=5)
+
+        btn_edit = ttk.Button(top_bar, text="Edit", style="Bold.TButton", width=15, command=lambda: edit_selected_data(root))
+        btn_edit.pack(side="right", pady=(10, 0), padx=5)
+
+        btn_delete = ttk.Button(top_bar, text="Delete", style="Bold.TButton", width=15, command=delete_selected_data)
+        btn_delete.pack(side="right", pady=(10, 0), padx=5)
+
+        load_pending_to_tree(right_panel)
+
+
+def add_load_file_top_bar_buttons(root):
+    global top_bar
+
+    buttons = [
+        ("Add", lambda: add_data_to_selected_file(root)),
+        ("Delete", delete_selected_data),
+        ("Edit", lambda: edit_selected_data(root)),
+        ("Barcode", generate_barcode)
+    ]
+
+    for text, cmd in reversed(buttons):  # reversed to keep order when packing to the right
+        btn = ttk.Button(top_bar, text=text, style="Bold.TButton", width=15, command=cmd)
+        btn.pack(side="right", pady=(10, 0), padx=5)
+
+
+def load_file_layout(right_panel, root):
+    global top_bar
+
+    clear_right_panel(right_panel)
+
+    if top_bar is not None:
+        top_bar.destroy()
+        top_bar = None
+    if top_bar is None:
+        # Create top bar frame only once
+        top_bar = tk.Frame(right_panel, bg="white")
+        top_bar.pack(fill="x", padx=8, pady=5)
+        # Add buttons to top_bar
+        add_load_file_top_bar_buttons(root)
+
+
+
+def user_panel(user_data):
+    # Create main window
+    root = tk.Tk()
+    root.title(f"Welcome, {user_data.get("Username")}")
+    root.geometry("1000x650")
+
+    # Create frames for left and right panels
+    left_panel = tk.Frame(root, bg="lightgray", width=150)
+    left_panel.pack(side="left", fill="y")
+
+    right_panel = tk.Frame(root, bg="white")
+    right_panel.pack(side="right", expand=True, fill="both")
+
+    style = ttk.Style()
+    style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=15)
+
+    # Add buttons to left panel
+    btn1 = ttk.Button(left_panel, text="Load File", style="Bold.TButton", command=lambda: load_excel_file(right_panel, root))
+    btn1.pack(pady=(10,3), padx=8, fill="x")
+
+    btn2 = ttk.Button(left_panel, text="Clear all", style="Bold.TButton", command=lambda: clear_right_panel(right_panel))
+    btn2.pack(pady=3, padx=8, fill="x")
+
+    btn3 = ttk.Button(left_panel, text="Add Batch", style="Bold.TButton", command=lambda: add_batch_layout(right_panel, root))
+    btn3.pack(pady=3, padx=8, fill="x")
+
+
+
+    # Start the main event loop
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    dummy_user = {
+        "Username": "test_user",
+        "UserID": "user123",
+        "Email": "test@example.com",
+        "Password": "1234"
+    }
+    user_panel(dummy_user)
+
