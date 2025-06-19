@@ -357,22 +357,35 @@ def send_email_reminders():
         with open(os.path.join(SCRIPT_DIR, "email_credentials.json")) as f:
             creds = json.load(f)
         yag = yagmail.SMTP(creds["email"], creds["password"])
+        print("✅ Reminder function triggered")
+
     except Exception as e:
         messagebox.showerror("Email Setup Error", f"Could not set up email client:\n{e}")
         return
 
-    files = [f for f in os.listdir(SCRIPT_DIR) if f.endswith(('.xlsx', '.xls'))]
+    excel_paths = []
+    for root, _, files in os.walk(os.path.join(SCRIPT_DIR, "saved_by_date")):
+        for file in files:
+            if file.endswith(('.xlsx', '.xls')):
+                excel_paths.append(os.path.join(root, file))
+
+    print("📁 Excel files found:", excel_paths)
     today = datetime.today().date()
 
-    for file in files:
+    for file_path in excel_paths:
         try:
-            df = pd.read_excel(os.path.join(SCRIPT_DIR, file), engine="openpyxl")
+            print(f"🔍 Checking file: {file_path}")
+            df = pd.read_excel(file_path, engine="openpyxl")
+
             if "Test Date" not in df.columns or "Owner Email" not in df.columns:
                 continue
 
             for _, row in df.iterrows():
-                test_date = pd.to_datetime(row["Test Date"]).date()
-                if test_date == today + pd.DateOffset(months=2):
+                test_date = pd.to_datetime(row["Test Date"], errors="coerce").date()
+                print("🗓️ Row Test Date:", test_date)
+
+                target_date = (today + pd.DateOffset(months=2)).date()
+                if test_date == target_date:
                     owner_email = row["Owner Email"]
                     product = row.get("Product", "Unnamed Product")
 
@@ -381,11 +394,12 @@ def send_email_reminders():
 
                     try:
                         yag.send(to=owner_email, subject=subject, contents=body)
-                        print(f"Email sent to {owner_email}")
+                        print(f"📧 Email sent to {owner_email}")
                     except Exception as e:
-                        print(f"Failed to send email to {owner_email}: {e}")
+                        print(f"❌ Failed to send email to {owner_email}: {e}")
         except Exception as e:
-            print(f"Error checking file {file}: {e}")
+            print(f"⚠️ Error checking file {file_path}: {e}")
+
 
 def manage_users():
     clear_tree(tree_ref, tree_frame_ref)
