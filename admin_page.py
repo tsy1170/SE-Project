@@ -3,33 +3,44 @@ from tkinter import ttk, filedialog, messagebox, simpledialog
 import pandas as pd
 import openpyxl
 import os
-import shutil
-import json
 from datetime import datetime, timezone
 import firebase_admin
 from firebase_admin import credentials, firestore
-
-# ----------------- Firestore Setup -----------------
-cred = credentials.Certificate("se-project-ad0dd-firebase-adminsdk-fbsvc-beb7183669.json")
-firebase_admin.initialize_app(cred)
-db = firestore.client()
 
 tree = None
 tree_frame = None
 top_bar = None
 
-# # Constants
-# SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# USERS_FILE = os.path.join(SCRIPT_DIR, "users.json")
-# PENDING_DIR = os.path.join(SCRIPT_DIR, "pending_files")
-# APPROVED_DIR = os.path.join(SCRIPT_DIR, "approved_files")
-# BARCODE_REQUESTS_FILE = os.path.join(SCRIPT_DIR, "barcode_requests.csv")
 
-# # Ensure necessary directories exist
-# os.makedirs(PENDING_DIR, exist_ok=True)
-# os.makedirs(APPROVED_DIR, exist_ok=True)
+def reject_requests(db):
+    global tree
 
-def approve_requests():
+    selected = tree.selection()
+    if not selected:
+        messagebox.showwarning("No Selection", "Please select a row to reject.")
+        return
+
+    confirm = messagebox.askyesno("Confirm Reject", "Are you sure you want to reject the selected request(s)?")
+    if not confirm:
+        return
+
+    try:
+        for item in selected:
+            values = tree.item(item, "values")
+            product_id = values[0]
+
+            # Delete from Firestore
+            db.collection("Pending").document(product_id).delete()
+
+            # Remove from Treeview
+            tree.delete(item)
+
+        messagebox.showinfo("Rejected", "Selected request(s) have been rejected and removed.")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to reject request(s):\n{e}")
+
+
+def approve_requests(db):
     global tree
 
     selected = tree.selection()
@@ -130,7 +141,7 @@ def create_tree_view(right_panel):
         tree_frame.grid_columnconfigure(0, weight=1)
 
 
-def view_pending_requests(right_panel):
+def view_pending_requests(right_panel, db):
     global top_bar
 
     clear_right_panel(right_panel)
@@ -145,10 +156,10 @@ def view_pending_requests(right_panel):
         top_bar = tk.Frame(right_panel, bg="white")
         top_bar.pack(fill="x", padx=8, pady=5)
 
-        btn_add = ttk.Button(top_bar, text="Approve", style="Bold.TButton", width=15, command=approve_requests)
+        btn_add = ttk.Button(top_bar, text="Approve", style="Bold.TButton", width=15, command=lambda: approve_requests(db))
         btn_add.pack(side="right", pady=(10, 0), padx=5)
 
-        btn_edit = ttk.Button(top_bar, text="Reject", style="Bold.TButton", width=15)
+        btn_edit = ttk.Button(top_bar, text="Reject", style="Bold.TButton", width=15, command=lambda: reject_requests(db))
         btn_edit.pack(side="right", pady=(10, 0), padx=5)
 
     create_tree_view(right_panel)
@@ -172,7 +183,7 @@ def view_pending_requests(right_panel):
         messagebox.showerror("Error", f"Failed to load pending data:\n{e}")
 
 
-def admin_panel(admin_data):
+def admin_panel(admin_data, db):
     # Tkinter app setup
     root = tk.Tk()
     root.title(f"Welcome, {admin_data.get("AdminID")}")
@@ -187,138 +198,10 @@ def admin_panel(admin_data):
     style = ttk.Style()
     style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=15)
 
-    ttk.Button(left_panel, text="View Requests", style="Bold.TButton", command=lambda: view_pending_requests(right_panel)).pack(pady=5, padx=10)
+    ttk.Button(left_panel, text="View Requests", style="Bold.TButton", command=lambda: view_pending_requests(right_panel, db)).pack(pady=5, padx=10)
     ttk.Button(left_panel, text="Manage Users", style="Bold.TButton").pack(pady=5, padx=10)
     ttk.Button(left_panel, text="Barcode Requests", style="Bold.TButton").pack(pady=5, padx=10)
 
     root.mainloop()
-
-if __name__ == "__main__":
-    dummy_user = {
-        "Username": "test_user",
-        "UserID": "user123",
-        "Email": "test@example.com",
-        "Password": "1234"
-    }
-    admin_panel(dummy_user)
-
-
-# Helper: Clear tree
-
-# def clear_tree():
-#     global tree, tree_frame
-#     if tree:
-#         tree.destroy()
-#     if tree_frame:
-#         tree_frame.destroy()
-
-
-# # Load file (goes to pending for approval)
-# def load_file():
-#     file_path = filedialog.askopenfilename(title="Select Excel File", filetypes=[("Excel files", "*.xlsx *.xls")])
-#     if file_path:
-#         dest_path = os.path.join(PENDING_DIR, f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{os.path.basename(file_path)}")
-#         shutil.copy(file_path, dest_path)
-#         messagebox.showinfo("Upload Complete", "File uploaded for admin approval.")
-
-# Admin: Approve or reject pending files
-# def approve_files():
-#     clear_tree()
-#     global tree, tree_frame
-#     pending_files = [f for f in os.listdir(PENDING_DIR) if f.endswith(('.xlsx', '.xls'))]
-#     if not pending_files:
-#         messagebox.showinfo("No Pending Files", "No files pending approval.")
-#         return
-#
-#     tree_frame = tk.Frame(right_panel, bg="white")
-#     tree_frame.pack(expand=True, fill="both")
-#     tree = ttk.Treeview(tree_frame, columns=("filename", "action"), show="headings")
-#     tree.heading("filename", text="Filename")
-#     tree.heading("action", text="Action")
-#
-#     for f in pending_files:
-#         tree.insert("", "end", values=(f, "Pending"))
-#     tree.pack(fill="both", expand=True)
-#
-#     def approve():
-#         sel = tree.selection()
-#         for item in sel:
-#             filename = tree.item(item)['values'][0]
-#             shutil.move(os.path.join(PENDING_DIR, filename), os.path.join(APPROVED_DIR, filename))
-#         messagebox.showinfo("Success", "Selected files approved.")
-#         approve_files()
-#
-#     def reject():
-#         sel = tree.selection()
-#         for item in sel:
-#             filename = tree.item(item)['values'][0]
-#             os.remove(os.path.join(PENDING_DIR, filename))
-#         messagebox.showinfo("Success", "Selected files rejected.")
-#         approve_files()
-#
-#     btn_frame = tk.Frame(tree_frame)
-#     btn_frame.pack()
-#     ttk.Button(btn_frame, text="Approve", style="Bold.TButton", command=approve).pack(side="left", padx=5)
-#     ttk.Button(btn_frame, text="Reject", style="Bold.TButton", command=reject).pack(side="left", padx=5)
-#
-# # Admin: Manage users
-# def manage_users():
-#     clear_tree()
-#     users = load_users()
-#
-#     def add_user():
-#         uname = simpledialog.askstring("Add User", "Enter new username:")
-#         pwd = simpledialog.askstring("Password", "Enter password:", show='*')
-#         if uname in users:
-#             messagebox.showerror("Error", "User already exists.")
-#         else:
-#             users[uname] = {"password": pwd, "role": "user"}
-#             save_users(users)
-#             messagebox.showinfo("Success", f"User {uname} added.")
-#
-#     def del_user():
-#         uname = simpledialog.askstring("Delete User", "Enter username to delete:")
-#         if uname == "admin" or uname not in users:
-#             messagebox.showerror("Error", "Invalid user.")
-#         else:
-#             del users[uname]
-#             save_users(users)
-#             messagebox.showinfo("Deleted", f"User {uname} deleted.")
-#
-#     tk.Label(right_panel, text="User Management", font=("Segoe UI", 14)).pack(pady=10)
-#     tk.Button(right_panel, text="Add User", command=add_user).pack(pady=5)
-#     tk.Button(right_panel, text="Delete User", command=del_user).pack(pady=5)
-#
-# def approve_barcodes():
-#     clear_tree()
-#     if not os.path.exists(BARCODE_REQUESTS_FILE):
-#         messagebox.showinfo("No Requests", "No barcode requests found.")
-#         return
-#     df = pd.read_csv(BARCODE_REQUESTS_FILE)
-#     if df.empty:
-#         messagebox.showinfo("No Requests", "No barcode requests available.")
-#         return
-#
-#     tree_frame = tk.Frame(right_panel, bg="white")
-#     tree_frame.pack(expand=True, fill="both")
-#
-#     tree = ttk.Treeview(tree_frame, columns=list(df.columns), show="headings")
-#     for col in df.columns:
-#         tree.heading(col, text=col)
-#         tree.column(col, width=100)
-#
-#     for row in df.itertuples(index=False):
-#         tree.insert("", "end", values=list(row))
-#     tree.pack(fill="both", expand=True)
-#
-#     def approve():
-#         messagebox.showinfo("Approved", "(Simulated) Barcode requests approved.")
-#
-#     tk.Button(tree_frame, text="Approve All", command=approve).pack(pady=5)
-
-
-
-
-
 
 
