@@ -199,51 +199,95 @@ def delete_selected_data():
 
 def view_all():
     clear_tree(tree_ref, tree_frame_ref)
-    excel_files = [f for f in os.listdir(SCRIPT_DIR) if f.endswith((".xlsx", ".xls"))]
-    if not excel_files:
-        messagebox.showerror("Error", "No Excel files found.")
+
+    base_dir = os.path.join(SCRIPT_DIR, "saved_by_date")
+    if not os.path.exists(base_dir):
+        messagebox.showinfo("No Files", "No saved_by_date folder found.")
         return
+
     tree_frame_ref[0] = tk.Frame(right_panel, bg="white")
     tree_frame_ref[0].pack(expand=True, fill="both", padx=10, pady=10)
+
     tree_ref[0] = ttk.Treeview(tree_frame_ref[0])
     tree_ref[0].grid(row=0, column=0, sticky="nsew")
+
     scrollbar_y = ttk.Scrollbar(tree_frame_ref[0], orient="vertical", command=tree_ref[0].yview)
     scrollbar_y.grid(row=0, column=1, sticky="ns")
     scrollbar_x = ttk.Scrollbar(tree_frame_ref[0], orient="horizontal", command=tree_ref[0].xview)
     scrollbar_x.grid(row=1, column=0, sticky="ew")
+
     tree_ref[0].configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
     tree_frame_ref[0].grid_rowconfigure(0, weight=1)
     tree_frame_ref[0].grid_columnconfigure(0, weight=1)
-    for file in excel_files:
-        try:
-            file_path = os.path.join(SCRIPT_DIR, file)
-            df = pd.read_excel(file_path, engine="openpyxl")
-        except Exception as e:
-            print(f"Failed to read {file}: {e}")
-            continue
-        if df.empty:
-            continue
-        parent_id = tree_ref[0].insert("", "end", text=file, open=True)
-        if not tree_ref[0]["columns"]:
-            tree_ref[0]["columns"] = list(df.columns)
-            tree_ref[0]["show"] = "tree headings"
-            for col in df.columns:
-                tree_ref[0].heading(col, text=col)
-                tree_ref[0].column(col, width=120, anchor="center")
-        for row in df.itertuples(index=False):
-            tree_ref[0].insert(parent_id, "end", values=list(row))
+
+    for root_dir, _, files in os.walk(base_dir):
+        for file in files:
+            if file.endswith((".xlsx", ".xls")):
+                try:
+                    path = os.path.join(root_dir, file)
+                    df = pd.read_excel(path, engine="openpyxl")
+                    if df.empty:
+                        continue
+
+                    folder_label = os.path.relpath(root_dir, SCRIPT_DIR)
+                    display_name = os.path.join(folder_label, file)
+
+                    parent_id = tree_ref[0].insert("", "end", text=display_name, open=True)
+
+                    if not tree_ref[0]["columns"]:
+                        tree_ref[0]["columns"] = list(df.columns)
+                        tree_ref[0]["show"] = "tree headings"
+                        for col in df.columns:
+                            tree_ref[0].heading(col, text=col)
+                            tree_ref[0].column(col, width=120, anchor="center")
+
+                    for row in df.itertuples(index=False):
+                        tree_ref[0].insert(parent_id, "end", values=list(row))
+
+                except Exception as e:
+                    print(f"Failed to read {file}: {e}")
+
 
 def load_excel_file():
     file_path = filedialog.askopenfilename(title="Select Excel File", filetypes=[("Excel files", "*.xlsx *.xls")])
     if file_path:
         try:
             df = pd.read_excel(file_path, engine="openpyxl")
-            destination_path = os.path.join(SCRIPT_DIR, os.path.basename(file_path))
-            shutil.move(file_path, destination_path)
-            messagebox.showinfo("Successful", "File loaded successfully. Click 'View all' to refresh.")
+
+            # Get test date from the first row
+            if "Test Date" not in df.columns:
+                messagebox.showerror("Missing Column", "The uploaded file must contain a 'Test Date' column.")
+                return
+
+            test_date_raw = df["Test Date"].iloc[0]
+            test_date_parsed = pd.to_datetime(test_date_raw, dayfirst=True, errors="coerce")
+
+            if pd.isnull(test_date_parsed):
+                messagebox.showerror("Invalid Date", f"Cannot parse test date: {test_date_raw}")
+                return
+
+            test_date = test_date_parsed.strftime("%Y%m%d")
+
+            save_dir = os.path.join(SCRIPT_DIR, "saved_by_date", test_date)
+            os.makedirs(save_dir, exist_ok=True)
+
+            # Save file in date-named folder
+            filename = os.path.basename(file_path)
+            destination_path = os.path.join(save_dir, filename)
+            if os.path.exists(destination_path):
+                confirm = messagebox.askyesno("Overwrite File?",
+                                              f"{filename} already exists in {test_date}. Overwrite it?")
+                if not confirm:
+                    return
+
+            shutil.copy(file_path, destination_path)
+
+            messagebox.showinfo("Successful", f"File saved to:\n{destination_path}")
             view_all()
+
         except Exception as e:
             messagebox.showerror("Error", f"Could not load file:\n{e}")
+
 def request_barcode_from_selection():
     tree = tree_ref[0]
     if not tree:
