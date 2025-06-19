@@ -38,18 +38,17 @@ def insert_data_into_tree(file_name, df, right_panel):
         tree_frame.grid_rowconfigure(0, weight=1)
         tree_frame.grid_columnconfigure(0, weight=1)
 
-    # If columns are not set, initialize them
+    # If columns are not set, initialize columns
     if not tree["columns"]:
         tree["columns"] = list(df.columns)
         tree["show"] = "tree headings"
         for col in df.columns:
             tree.heading(col, text=col)
-            tree.column(col, width=120, anchor="center")
+            if col == "Description":
+                tree.column(col, width=300, anchor="center", stretch=True)
+            else:
+                tree.column(col, width=150, anchor="center")
 
-    # If columns are already set, check for mismatch
-    elif list(df.columns) != list(tree["columns"]):
-        messagebox.showwarning("Column Mismatch", f"File '{file_name}' skipped due to column mismatch.")
-        return
 
     parent_id = tree.insert("", "end", text=file_name, open=True)
     for _, row in df.iterrows():
@@ -507,7 +506,7 @@ def add_new_batch_to_pending(right_panel, root, db, user_data):
                     name,
                     desc,
                     test_date.strftime("%d-%m-%Y"),
-                    datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M")
+                    datetime.now(timezone.utc).strftime("%d-%m-%Y")
                 ))
 
             entry_id.delete(0, tk.END)
