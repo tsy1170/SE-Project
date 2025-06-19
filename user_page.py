@@ -15,11 +15,6 @@ tree = None
 tree_frame = None
 top_bar = None
 
-# --- Firestore Setup ---
-cred = credentials.Certificate("se-project-ad0dd-firebase-adminsdk-fbsvc-beb7183669.json")
-firebase_admin.initialize_app(cred)
-db = firestore.client()
-
 
 def insert_data_into_tree(file_name, df, right_panel):
     global tree, tree_frame
@@ -189,7 +184,6 @@ def create_new_excel_file(root, right_panel):
             messagebox.showerror("Error", f"Failed to save file:\n{e}")
 
     tk.Button(form, text="Save", command=save_file).grid(row=len(fields), columnspan=2, pady=15)
-
 
 
 def add_data_to_selected_file(root):
@@ -466,7 +460,7 @@ def generate_barcode():
         messagebox.showerror("Error", f"Failed to generate barcode:\n{e}")
 
 
-def add_new_batch_to_pending(right_panel, root):
+def add_new_batch_to_pending(right_panel, root, db, user_data):
     form = tk.Toplevel(root)
     form.title("Add new Batch")
     form.geometry("400x200")
@@ -495,16 +489,26 @@ def add_new_batch_to_pending(right_panel, root):
         test_date = date_entry.get_date()
 
         data = {
-            "Product ID": product_id,
-            "Product Name": name,
+            "Product_ID": product_id,
+            "Product_Name": name,
             "Description": desc,
-            "Test Date": test_date.strftime("%Y-%m-%d"),
-            "Submitted At": datetime.now(timezone.utc)
+            "Test_Date": test_date.strftime("%d-%m-%Y"),
+            "Submitted_At": datetime.now(timezone.utc),
+            "UserID": user_data.get("UserID")
         }
 
         try:
             db.collection("Pending").document(product_id).set(data)
             messagebox.showinfo("Success", "Product submitted for approval.")
+
+            if tree:
+                tree.insert("", "end", values=(
+                    product_id,
+                    name,
+                    desc,
+                    test_date.strftime("%d-%m-%Y"),
+                    datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M")
+                ))
 
             entry_id.delete(0, tk.END)
             entry_name.delete(0, tk.END)
@@ -520,7 +524,7 @@ def add_new_batch_to_pending(right_panel, root):
     tk.Button(form, text="Save", command=submit).grid(row=9, columnspan=2, pady=10)
 
 
-def load_pending_to_tree(right_panel):
+def load_pending_to_tree(right_panel, db):
     global tree, tree_frame
 
     if not tree_frame:
@@ -534,8 +538,6 @@ def load_pending_to_tree(right_panel):
         tree.heading("Description", text="Description")
         tree.heading("Test Date", text="Test Date")
         tree.heading("Submitted At", text="Submitted At")
-
-        tree.pack(fill="both", expand=True, pady=10)
         tree.grid(row=0, column=0, sticky="nsew")
 
         scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
@@ -556,12 +558,11 @@ def load_pending_to_tree(right_panel):
         for doc in docs:
             data = doc.to_dict()
             tree.insert("", "end", values=(
-                data.get("Product ID", ""),
-                data.get("Product Name", ""),
+                data.get("Product_ID", ""),
+                data.get("Product_Name", ""),
                 data.get("Description", ""),
-                data.get("Test Date", ""),
-                data.get("Submitted At", "").strftime("%d-%m-%y ") if isinstance(data.get("Submitted At"),
-                                                                                      datetime) else ""
+                data.get("Test_Date", ""),
+                data.get("Submitted_At", "").strftime("%d-%m-%Y")
             ))
         # print([doc.to_dict() for doc in db.collection("Pending").stream()])
     except Exception as e:
@@ -569,7 +570,7 @@ def load_pending_to_tree(right_panel):
 
 
 
-def add_batch_layout(right_panel, root):
+def add_batch_layout(right_panel, root, db, user_data):
     global top_bar
 
     clear_right_panel(right_panel)
@@ -583,7 +584,7 @@ def add_batch_layout(right_panel, root):
         top_bar = tk.Frame(right_panel, bg="white")
         top_bar.pack(fill="x", padx=8, pady=5)
 
-        btn_add = ttk.Button(top_bar, text="Add", style="Bold.TButton", width=15, command=lambda: add_new_batch_to_pending(right_panel, root))
+        btn_add = ttk.Button(top_bar, text="Add", style="Bold.TButton", width=15, command=lambda: add_new_batch_to_pending(right_panel, root, db, user_data))
         btn_add.pack(side="right", pady=(10, 0), padx=5)
 
         btn_edit = ttk.Button(top_bar, text="Edit", style="Bold.TButton", width=15, command=lambda: edit_selected_data(root))
@@ -592,7 +593,7 @@ def add_batch_layout(right_panel, root):
         btn_delete = ttk.Button(top_bar, text="Delete", style="Bold.TButton", width=15, command=delete_selected_data)
         btn_delete.pack(side="right", pady=(10, 0), padx=5)
 
-        load_pending_to_tree(right_panel)
+        load_pending_to_tree(right_panel, db)
 
 
 def add_load_file_top_bar_buttons(root):
@@ -627,7 +628,7 @@ def load_file_layout(right_panel, root):
 
 
 
-def user_panel(user_data):
+def user_panel(user_data, db):
     # Create main window
     root = tk.Tk()
     root.title(f"Welcome, {user_data.get("Username")}")
@@ -650,21 +651,13 @@ def user_panel(user_data):
     btn2 = ttk.Button(left_panel, text="Clear all", style="Bold.TButton", command=lambda: clear_right_panel(right_panel))
     btn2.pack(pady=3, padx=8, fill="x")
 
-    btn3 = ttk.Button(left_panel, text="Add Batch", style="Bold.TButton", command=lambda: add_batch_layout(right_panel, root))
+    btn3 = ttk.Button(left_panel, text="Add Batch", style="Bold.TButton", command=lambda: add_batch_layout(right_panel, root, db, user_data))
     btn3.pack(pady=3, padx=8, fill="x")
-
 
 
     # Start the main event loop
     root.mainloop()
 
 
-if __name__ == "__main__":
-    dummy_user = {
-        "Username": "test_user",
-        "UserID": "user123",
-        "Email": "test@example.com",
-        "Password": "1234"
-    }
-    user_panel(dummy_user)
+
 
