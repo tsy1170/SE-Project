@@ -50,7 +50,7 @@ def login(root, entry_ID, entry_password):
 
 def show_login():
     root = tk.Tk()
-    root.title("User Login")
+    root.title("Login")
     root.geometry("300x200")
 
     tk.Label(root, text="UserID:").pack(pady=5)
