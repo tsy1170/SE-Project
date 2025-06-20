@@ -8,8 +8,7 @@ import os
 import barcode
 from barcode.writer import ImageWriter
 from datetime import datetime, timezone
-import firebase_admin
-from firebase_admin import credentials, firestore
+import Login
 
 tree = None
 tree_frame = None
@@ -56,7 +55,7 @@ def insert_data_into_tree(file_name, df, right_panel):
 
 
 
-def load_excel_file(right_panel, root):
+def load_excel_file(right_panel, root, db):
 
     file_paths = filedialog.askopenfilenames(
         title="Select Excel File(s)",
@@ -66,7 +65,7 @@ def load_excel_file(right_panel, root):
     if not file_paths:
         return
 
-    load_file_layout(right_panel, root)
+    load_file_layout(right_panel, root, db)
 
     for file_path in file_paths:
         file_name = os.path.basename(file_path)
@@ -103,180 +102,9 @@ def clear_right_panel(right_panel):
         tree_frame = None
 
 
-def create_new_excel_file(root, right_panel):
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    default_file_name = f"{date_str}.xlsx"
-    default_file_path = os.path.join(script_dir, default_file_name)
-
-    use_default = messagebox.askyesno("Create New File", f"Use default file name: {default_file_name}?")
-
-    if use_default:
-        file_path = default_file_path
-        file_name = default_file_name
-    else:
-        user_input = askstring("File Name", "Enter a name for the new Excel file (without extension):")
-        if not user_input:
-            return  # Cancelled
-        file_name = f"{user_input}.xlsx"
-        file_path = os.path.join(script_dir, file_name)
-
-
-        try:
-            df = pd.read_excel(file_path, engine="openpyxl")
-            # Create tree_frame and tree if not already created
-            insert_data_into_tree(file_name, df)
-            if df.empty:
-                messagebox.showinfo("Empty File", f"'{file_name}' is empty. You can add data.")
-            return
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not load file:\n{e}")
-            return
-
-    # File doesn't exist - create new and prompt for data entry
-    form = tk.Toplevel(root)
-    form.title("Add data")
-    form.geometry("450x200")
-
-    fields = ["Product ID", "Product Name", "Product Description", "Test date"]
-    entries = {}
-
-    for i, col in enumerate(fields):
-        tk.Label(form, text=col).grid(row=i, column=0, sticky="e", padx=10, pady=5)
-        if col == "Test date":
-            date_entry = DateEntry(form, width=28, background='grey',
-                                   foreground='white', borderwidth=1, date_pattern='dd-mm-yyyy', mindate=datetime.now())
-            date_entry.grid(row=i, column=1, pady=5, padx=5)
-            entries[col] = date_entry
-        else:
-            entry = tk.Entry(form, width=30)
-            entry.grid(row=i, column=1, pady=5, padx=5)
-            entries[col] = entry
-
-    def save_file():
-        data = {}
-        for field, entry in entries.items():
-            value = entry.get().strip()
-            if field == "Test date":
-                try:
-                    selected_date = datetime.strptime(value, "%d-%m-%Y")
-                    if selected_date.date() < datetime.today().date():
-                        raise ValueError("Date must not be in the past.")
-                    data[field] = selected_date.strftime("%d-%m-%Y")
-                except Exception as e:
-                    messagebox.showerror("Date Error", f"Invalid date: {e}")
-                    return
-            else:
-                data[field] = value
-
-        if not all(data.values()):
-            messagebox.showerror("Input Error", "Please fill out all fields.")
-            return
-
-        try:
-            df = pd.DataFrame([data])
-            df.to_excel(file_path, index=False, engine="openpyxl")
-            insert_data_into_tree(file_name, df, right_panel)
-            messagebox.showinfo("Success", f"File '{file_name}' created and saved.")
-            form.destroy()
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to save file:\n{e}")
-
-    tk.Button(form, text="Save", command=save_file).grid(row=len(fields), columnspan=2, pady=15)
-
-
-def add_data_to_selected_file(root):
+def delete_selected_data(db):
     if not tree:
         messagebox.showwarning("No Tree", "No data available.")
-        return
-
-    selected = tree.selection()
-    if not selected:
-        messagebox.showwarning("No Selection", "Please select a file or row.")
-        return
-
-    # Find the file node (root of selected branch)
-    selected_item = selected[0]
-    while tree.parent(selected_item):
-        selected_item = tree.parent(selected_item)
-
-    file_name = tree.item(selected_item, "text")
-    file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
-
-    try:
-        df = pd.read_excel(file_path, engine="openpyxl")
-    except Exception as e:
-        messagebox.showerror("Error", f"Failed to read file:\n{e}")
-        return
-
-    form = tk.Toplevel(root)
-    form.title(f"Add Data to {file_name}")
-    form.geometry("400x250")
-
-    entries = {}
-    for i, col in enumerate(df.columns):
-        tk.Label(form, text=col).grid(row=i, column=0, sticky="e", pady=5, padx=5)
-        if col == "Test date":
-            date_entry = DateEntry(form, width=30, background='grey',
-                                   foreground='white', borderwidth=1, date_pattern='dd-mm-yyyy', mindate=datetime.now())
-            date_entry.grid(row=i, column=1, pady=5, padx=5)
-            entries[col] = date_entry
-        elif col == "Product Description":
-            text_desc = tk.Text(form, height=3, width=30, font=("Arial", 9))
-            text_desc.grid(row=i, column=1, pady=5, padx=5)
-            entries[col] = text_desc
-        else:
-            entry = tk.Entry(form, width=30, font=("Arial", 9))
-            entry.grid(row=i, column=1, pady=5, padx=5)
-            entries[col] = entry
-
-
-    def submit():
-        new_row = {}
-        for col, entry in entries.items():
-            if isinstance(entry, tk.Text):
-                value = entry.get("1.0", "end-1c").strip()
-            else:
-                value = entry.get().strip()
-
-            if col == "Test date":
-                try:
-                    selected_date = datetime.strptime(value, "%d-%m-%Y")
-                    if selected_date.date() < datetime.today().date():
-                        raise ValueError("Date must not be in the past.")
-                    new_row[col] = selected_date.strftime("%d-%m-%Y")
-                except Exception as e:
-                    messagebox.showerror("Date Error", f"Invalid date: {e}")
-                    return
-            else:
-                new_row[col] = str(value)
-
-        if not all(new_row.values()):
-            messagebox.showerror("Input Error", "Please fill in all fields.")
-            return
-
-        try:
-            df.loc[len(df)] = new_row
-            df.to_excel(file_path, index=False, engine="openpyxl")
-
-            for child in tree.get_children(selected_item):
-                tree.delete(child)
-            for _, row in df.iterrows():
-                tree.insert(selected_item, "end", values=list(row))
-
-            messagebox.showinfo("Success", "Data added and displayed.")
-            form.destroy()
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to add data:\n{e}")
-
-    tk.Button(form, text="Submit", command=submit).grid(row=len(df.columns), columnspan=2, pady=10)
-
-
-
-
-def delete_selected_data():
-    if not tree:
-        messagebox.showwarning("No Selection", "Please select a data row.")
         return
 
     selected_item = tree.selection()
@@ -287,18 +115,8 @@ def delete_selected_data():
     item = selected_item[0]
     parent = tree.parent(item)
 
-    # If parent is empty, user selected the Excel filename node
     if not parent:
-        messagebox.showwarning("Invalid Selection", "Please select a data row, not the file name.")
-        return
-
-    file_name = tree.item(parent, "text")
-    file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
-
-    try:
-        df = pd.read_excel(file_path, engine="openpyxl")
-    except Exception as e:
-        messagebox.showerror("Error", f"Could not read file:\n{e}")
+        messagebox.showwarning("Invalid Selection", "Please select a data row, not a file name.")
         return
 
     row_values = tree.item(item, "values")
@@ -308,22 +126,35 @@ def delete_selected_data():
         return
 
     try:
-        # Filter out the matching row from DataFrame
-        df = df[~(df.astype(str) == pd.Series(row_values, index=df.columns).astype(str)).all(axis=1)]
+        product_id = row_values[0]
+        submitted_at = row_values[-1]  # Get the last column (Submitted_At)
 
-        # Save updated data
+        # Construct Excel filename and path
+        file_name = f"{submitted_at}.xlsx"
+        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
+
+        # Load the Excel file
+        df = pd.read_excel(file_path, engine="openpyxl")
+
+        # Remove the row by matching Product_ID
+        df = df[df["Product_ID"].astype(str) != str(product_id)]
+
+        # Save the updated Excel file
         df.to_excel(file_path, index=False, engine="openpyxl")
 
-        # Remove item from Treeview
+        # Delete from Firestore
+        db.collection(submitted_at).document(product_id).delete()
+
+        # Remove the item from the Treeview
         tree.delete(item)
 
-        messagebox.showinfo("Deleted", "Selected row has been deleted.")
+        messagebox.showinfo("Deleted", f"Product '{product_id}' has been deleted.")
 
     except Exception as e:
         messagebox.showerror("Error", f"Failed to delete data:\n{e}")
 
 
-def edit_selected_data(root):
+def edit_selected_data(root, db):
     if not tree:
         messagebox.showwarning("No Tree", "No data available.")
         return
@@ -340,71 +171,91 @@ def edit_selected_data(root):
         messagebox.showwarning("Invalid Selection", "Please select a data row, not a file name.")
         return
 
-    file_name = tree.item(parent, "text")
+    # Get file and path
+    file_name = tree.item(parent, "text")  # e.g., "12-07-2024"
     file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
 
     try:
         df = pd.read_excel(file_path, engine="openpyxl")
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to read file:\n{e}")
+        messagebox.showerror("Error", f"Failed to read Excel:\n{e}")
         return
 
     row_values = tree.item(item, "values")
     original_index = None
 
-    # Find the index of the selected row in the DataFrame
     for i, row in df.iterrows():
         if all(str(row[col]) == str(row_values[j]) for j, col in enumerate(df.columns)):
             original_index = i
             break
 
     if original_index is None:
-        messagebox.showerror("Error", "Could not find the selected row in the file.")
+        messagebox.showerror("Error", "Row not found in Excel.")
         return
 
+    # ---------------- Edit UI ----------------
     form = tk.Toplevel(root)
-    form.title(f"Edit Data in {file_name}")
-    form.geometry("400x200")
-
+    form.title("Edit Product")
+    form.geometry("420x250")
     entries = {}
+
     for i, col in enumerate(df.columns):
         tk.Label(form, text=col).grid(row=i, column=0, sticky="e", pady=5, padx=5)
-        if col == "Test date":
-            date_entry = DateEntry(form, width=28, background='grey',
-                                   foreground='white', borderwidth=1, date_pattern='dd-mm-yyyy', mindate=datetime.now())
+
+        if col == "Product_ID" or col == "Submitted_At":
+            entry = tk.Entry(form, width=30)
+            entry.insert(0, row_values[i])
+            entry.configure(state="disabled")  # Make it read-only
+            entry.grid(row=i, column=1, pady=5, padx=5)
+            entries[col] = entry  # Store the widget, not just the value
+
+        elif col == "Test_Date":
+            date_entry = DateEntry(
+                form, width=28, background='grey',
+                foreground='white', borderwidth=1, date_pattern='dd-mm-yyyy',
+                mindate=datetime.today()
+            )
             date_entry.set_date(datetime.strptime(row_values[i], "%d-%m-%Y"))
             date_entry.grid(row=i, column=1, pady=5, padx=5)
             entries[col] = date_entry
+
         else:
             entry = tk.Entry(form, width=30)
             entry.insert(0, row_values[i])
             entry.grid(row=i, column=1, pady=5, padx=5)
             entries[col] = entry
 
+    # --------------- Save Changes ----------------
     def save_edit():
         updated_row = {}
-        for col, entry in entries.items():
-            value = entry.get().strip()
-            if col == "Test date":
-                try:
-                    selected_date = datetime.strptime(value, "%d-%m-%Y")
-                    if selected_date.date() < datetime.today().date():
-                        raise ValueError("Date must not be in the past.")
-                    updated_row[col] = selected_date.strftime("%d-%m-%Y")
-                except Exception as e:
-                    messagebox.showerror("Date Error", f"Invalid date: {e}")
-                    return
-            else:
-                updated_row[col] = str(value)
 
-        if not all(updated_row.values()):
-            messagebox.showerror("Input Error", "Please fill in all fields.")
-            return
+        for col in df.columns:
+            widget = entries[col]
+
+            if col in ["Product_ID", "Submitted_At"]:
+                updated_row[col] = widget.get()
+            elif col == "Test_Date":
+                date_obj = widget.get_date()
+                if date_obj < datetime.today().date():
+                    messagebox.showerror("Date Error", "Test Date cannot be in the past.")
+                    return
+                updated_row[col] = date_obj.strftime("%d-%m-%Y")
+            else:
+                value = widget.get().strip()
+                if not value:
+                    messagebox.showerror("Input Error", f"{col} cannot be empty.")
+                    return
+                updated_row[col] = value
 
         try:
-            # Update the DataFrame and save
+            # Update DataFrame
             df.loc[original_index] = updated_row
             df.to_excel(file_path, index=False, engine="openpyxl")
+
+            # Update Firestore
+            product_id = updated_row["Product_ID"]
+            collection_name = updated_row["Submitted_At"]
+            db.collection(collection_name).document(product_id).update(updated_row)
 
             # Refresh Treeview
             for child in tree.get_children(parent):
@@ -412,12 +263,12 @@ def edit_selected_data(root):
             for _, row in df.iterrows():
                 tree.insert(parent, "end", values=list(row))
 
-            messagebox.showinfo("Updated", "Data updated successfully.")
+            messagebox.showinfo("Success", "Data updated.")
             form.destroy()
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to update data:\n{e}")
+            messagebox.showerror("Error", f"Failed to update:\n{e}")
 
-    tk.Button(form, text="Save", command=save_edit).grid(row=len(df.columns), columnspan=2, pady=10)
+    tk.Button(form, text="Save Changes", command=save_edit).grid(row=len(df.columns), columnspan=2, pady=15)
 
 
 
@@ -459,6 +310,122 @@ def generate_barcode():
         messagebox.showerror("Error", f"Failed to generate barcode:\n{e}")
 
 
+def edit_pending_items(root, db):
+    global tree
+
+    selected = tree.selection()
+    if len(selected) != 1:
+        messagebox.showwarning("Selection Error", "Please select exactly one item to edit.")
+        return
+
+    item_id = selected[0]
+    values = tree.item(item_id, "values")
+    product_id, name, desc, test_date, submitted_at_str = values[:5]
+
+    # Create Edit Form
+    form = tk.Toplevel(root)
+    form.title("Edit Item")
+    form.geometry("400x250")
+
+    ttk.Label(form, text="Product ID").grid(row=0, column=0, sticky="e", pady=5, padx=5)
+    entry_id = ttk.Entry(form, width=30, font=("Arial", 9))
+    entry_id.insert(0, product_id)
+    entry_id.config(state="disabled")  # Product ID should not be editable
+    entry_id.grid(row=0, column=1, pady=5, padx=5)
+
+    ttk.Label(form, text="Product Name").grid(row=1, column=0, sticky="e", pady=5, padx=5)
+    entry_name = ttk.Entry(form, width=30, font=("Arial", 9))
+    entry_name.insert(0, name)
+    entry_name.grid(row=1, column=1, pady=5, padx=5)
+
+    ttk.Label(form, text="Description").grid(row=2, column=0, sticky="e", pady=5, padx=5)
+    text_desc = tk.Text(form, height=3, width=30, font=("Arial", 9))
+    text_desc.insert("1.0", desc)
+    text_desc.grid(row=2, column=1, pady=5, padx=5)
+
+    ttk.Label(form, text="Test Date").grid(row=3, column=0, sticky="e", pady=5, padx=5)
+    date_entry = DateEntry(form, width=30, background='gray',
+                           foreground='white', borderwidth=2, date_pattern='dd-mm-yyyy')
+    date_entry.set_date(datetime.strptime(test_date, "%d-%m-%Y"))
+    date_entry.grid(row=3, column=1, pady=5, padx=5)
+
+    def update():
+        new_name = entry_name.get().strip()
+        new_desc = text_desc.get("1.0", tk.END).strip()
+        new_test_date = date_entry.get_date()
+
+        if not new_name or not new_desc:
+            messagebox.showwarning("Input Error", "All fields must be filled.")
+            form.lift()
+            form.focus_force()
+            return
+
+        if new_test_date < datetime.today().date():
+            messagebox.showwarning("Invalid Date", "Test date cannot be in the past.")
+            form.lift()
+            form.focus_force()
+            return
+
+        try:
+            doc_ref = db.collection("Pending").document(product_id)
+            doc_data = doc_ref.get().to_dict()
+
+            doc_data.update({
+                "Product_Name": new_name,
+                "Description": new_desc,
+                "Test_Date": new_test_date.strftime("%d-%m-%Y")
+            })
+
+            doc_ref.set(doc_data)
+
+            # Update treeview
+            tree.item(item_id, values=(
+                product_id,
+                new_name,
+                new_desc,
+                new_test_date.strftime("%d-%m-%Y"),
+                submitted_at_str
+            ))
+
+            form.destroy()
+            messagebox.showinfo("Success", "Item updated successfully.")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update item:\n{e}")
+
+    tk.Button(form, text="Update", command=update).grid(row=5, columnspan=2, pady=10)
+
+
+
+def delete_pending_items(db):
+    global tree
+
+    selected = tree.selection()
+    if not selected:
+        messagebox.showwarning("No Selection", "Please select item(s) to delete.")
+        return
+
+    confirm = messagebox.askyesno("Confirm Deletion", "Are you sure you want to delete the selected item(s)?")
+    if not confirm:
+        return
+
+    try:
+        for item in selected:
+            values = tree.item(item, "values")
+            product_id = values[0]  # Assuming 'Product ID' is the first column
+
+            # Delete from Firestore "Pending" collection
+            db.collection("Pending").document(product_id).delete()
+
+            # Remove from Treeview
+            tree.delete(item)
+
+        messagebox.showinfo("Success", "Selected item(s) deleted from Pending.")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to delete item(s):\n{e}")
+
+
+
 def add_new_batch_to_pending(right_panel, root, db, user_data):
     form = tk.Toplevel(root)
     form.title("Add new Batch")
@@ -486,17 +453,41 @@ def add_new_batch_to_pending(right_panel, root, db, user_data):
         name = entry_name.get().strip()
         desc = text_desc.get("1.0", tk.END).strip()
         test_date = date_entry.get_date()
+        today = datetime.today().date()
 
-        data = {
-            "Product_ID": product_id,
-            "Product_Name": name,
-            "Description": desc,
-            "Test_Date": test_date.strftime("%d-%m-%Y"),
-            "Submitted_At": datetime.now(timezone.utc),
-            "UserID": user_data.get("UserID")
-        }
+        # Check for missing fields
+        if not product_id or not name or not desc:
+            messagebox.showwarning("Input Error", "Please fill in all fields.")
+            form.lift()
+            form.focus_force()
+            return
+
+        # Check if Test Date is not before today
+        if test_date < today:
+            messagebox.showwarning("Invalid Date", "Test Date cannot be before today.")
+            form.lift()
+            form.focus_force()
+            return
+
+        # Check for duplicate Product ID
+        doc_ref = db.collection("Pending").document(product_id)
+        if doc_ref.get().exists:
+            messagebox.showerror("Duplicate Product ID", f"Product ID '{product_id}' already exists in Pending.")
+            form.lift()
+            form.focus_force()
+            return
 
         try:
+            data = {
+                "Product_ID": product_id,
+                "Product_Name": name,
+                "Description": desc,
+                "Test_Date": test_date.strftime("%d-%m-%Y"),
+                "Submitted_At": datetime.now(timezone.utc),
+                "UserID": user_data.get("UserID")
+            }
+
+
             db.collection("Pending").document(product_id).set(data)
             messagebox.showinfo("Success", "Product submitted for approval.")
 
@@ -519,6 +510,7 @@ def add_new_batch_to_pending(right_panel, root, db, user_data):
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save: {e}")
+
 
     tk.Button(form, text="Save", command=submit).grid(row=9, columnspan=2, pady=10)
 
@@ -586,31 +578,16 @@ def add_batch_layout(right_panel, root, db, user_data):
         btn_add = ttk.Button(top_bar, text="Add", style="Bold.TButton", width=15, command=lambda: add_new_batch_to_pending(right_panel, root, db, user_data))
         btn_add.pack(side="right", pady=(10, 0), padx=5)
 
-        btn_edit = ttk.Button(top_bar, text="Edit", style="Bold.TButton", width=15, command=lambda: edit_selected_data(root))
+        btn_edit = ttk.Button(top_bar, text="Delete", style="Bold.TButton", width=15, command=lambda: delete_pending_items(db))
         btn_edit.pack(side="right", pady=(10, 0), padx=5)
 
-        btn_delete = ttk.Button(top_bar, text="Delete", style="Bold.TButton", width=15, command=delete_selected_data)
+        btn_delete = ttk.Button(top_bar, text="Edit", style="Bold.TButton", width=15, command=lambda: edit_pending_items(root, db))
         btn_delete.pack(side="right", pady=(10, 0), padx=5)
 
         load_pending_to_tree(right_panel, db)
 
 
-def add_load_file_top_bar_buttons(root):
-    global top_bar
-
-    buttons = [
-        ("Add", lambda: add_data_to_selected_file(root)),
-        ("Delete", delete_selected_data),
-        ("Edit", lambda: edit_selected_data(root)),
-        ("Barcode", generate_barcode)
-    ]
-
-    for text, cmd in reversed(buttons):  # reversed to keep order when packing to the right
-        btn = ttk.Button(top_bar, text=text, style="Bold.TButton", width=15, command=cmd)
-        btn.pack(side="right", pady=(10, 0), padx=5)
-
-
-def load_file_layout(right_panel, root):
+def load_file_layout(right_panel, root, db):
     global top_bar
 
     clear_right_panel(right_panel)
@@ -622,9 +599,19 @@ def load_file_layout(right_panel, root):
         # Create top bar frame only once
         top_bar = tk.Frame(right_panel, bg="white")
         top_bar.pack(fill="x", padx=8, pady=5)
-        # Add buttons to top_bar
-        add_load_file_top_bar_buttons(root)
 
+        # Add buttons to top_bar
+        btn_delete = ttk.Button(top_bar, text="Delete", style="Bold.TButton", width=15, command=lambda: delete_selected_data(db))
+        btn_delete.pack(side="right", pady=(10, 0), padx=5)
+        btn_edit = ttk.Button(top_bar, text="Edit", style="Bold.TButton", width=15, command=lambda: edit_selected_data(root, db))
+        btn_edit.pack(side="right", pady=(10, 0), padx=5)
+        btn_barcode = ttk.Button(top_bar, text="Barcode", style="Bold.TButton", width=15, command=generate_barcode)
+        btn_barcode.pack(side="right", pady=(10, 0), padx=5)
+
+
+def logout(root):
+    root.destroy()
+    Login.show_login()
 
 
 def user_panel(user_data, db):
@@ -644,7 +631,7 @@ def user_panel(user_data, db):
     style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=15)
 
     # Add buttons to left panel
-    btn1 = ttk.Button(left_panel, text="Load File", style="Bold.TButton", command=lambda: load_excel_file(right_panel, root))
+    btn1 = ttk.Button(left_panel, text="Load File", style="Bold.TButton", command=lambda: load_excel_file(right_panel, root, db))
     btn1.pack(pady=(10,3), padx=8, fill="x")
 
     btn2 = ttk.Button(left_panel, text="Clear all", style="Bold.TButton", command=lambda: clear_right_panel(right_panel))
@@ -653,10 +640,10 @@ def user_panel(user_data, db):
     btn3 = ttk.Button(left_panel, text="Add Batch", style="Bold.TButton", command=lambda: add_batch_layout(right_panel, root, db, user_data))
     btn3.pack(pady=3, padx=8, fill="x")
 
+    ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
 
     # Start the main event loop
     root.mainloop()
-
 
 
 
