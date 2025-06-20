@@ -282,45 +282,6 @@ def edit_selected_data(root, db):
     tk.Button(form, text="Save Changes", command=save_edit).grid(row=len(df.columns), columnspan=2, pady=15)
 
 
-
-def generate_barcode():
-    if not tree:
-        messagebox.showwarning("No Tree", "No data available.")
-        return
-
-    selected_item = tree.selection()
-    if not selected_item:
-        messagebox.showwarning("No Selection", "Please select a data row.")
-        return
-
-    item = selected_item[0]
-    parent = tree.parent(item)
-
-    # If parent is empty, user selected the Excel file node
-    if not parent:
-        messagebox.showwarning("Invalid Selection", "Please select a data row, not a file name.")
-        return
-
-    row_values = tree.item(item, "values")
-
-    if not row_values or not row_values[0]:
-        messagebox.showerror("Error", "Selected row does not have a valid ID.")
-        return
-
-    id_value = str(row_values[0])  # Assuming ID is in the first column
-
-    try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        output_path = os.path.join(script_dir, f"barcode_{id_value}.png")
-
-        code = barcode.get('code128', id_value, writer=ImageWriter())
-        code.save(output_path)
-
-        messagebox.showinfo("Barcode Generated", f"Barcode for ID '{id_value}' saved as:\n{output_path}")
-    except Exception as e:
-        messagebox.showerror("Error", f"Failed to generate barcode:\n{e}")
-
-
 def edit_pending_items(root, db):
     global tree
 
@@ -625,9 +586,6 @@ def load_file_layout(right_panel, root, db):
         btn_delete.pack(side="right", pady=(10, 0), padx=5)
         btn_edit = ttk.Button(top_bar, text="Edit", style="Bold.TButton", width=15, command=lambda: edit_selected_data(root, db))
         btn_edit.pack(side="right", pady=(10, 0), padx=5)
-        btn_barcode = ttk.Button(top_bar, text="Barcode", style="Bold.TButton", width=15, command=generate_barcode)
-        btn_barcode.pack(side="right", pady=(10, 0), padx=5)
-
 
 def logout(root):
     global top_bar
@@ -650,7 +608,9 @@ def user_panel(user_data, db):
     right_panel.pack(side="right", expand=True, fill="both")
 
     style = ttk.Style()
+    style.theme_use("clam")
     style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=15)
+    style.configure("Treeview.Heading", background="#d3d3d3", foreground="black", font=("Segoe UI", 10, "bold"))
 
     # Add buttons to left panel
     btn1 = ttk.Button(left_panel, text="Load File", style="Bold.TButton", command=lambda: load_excel_file(right_panel, root, db))
