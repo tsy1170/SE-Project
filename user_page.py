@@ -91,14 +91,25 @@ def clear_right_panel(right_panel):
     global tree, tree_frame
 
     for widget in right_panel.winfo_children():
-        widget.destroy()
+        try:
+            widget.destroy()
+        except tk.TclError:
+            pass
 
     if tree:
-        tree.destroy()
+        try:
+            if tree.winfo_exists():
+                tree.destroy()
+        except tk.TclError:
+            pass
         tree = None
 
     if tree_frame:
-        tree_frame.destroy()
+        try:
+            if tree_frame.winfo_exists():
+                tree_frame.destroy()
+        except tk.TclError:
+            pass
         tree_frame = None
 
 
@@ -567,7 +578,11 @@ def add_batch_layout(right_panel, root, db, user_data):
     clear_right_panel(right_panel)
 
     if top_bar is not None:
-        top_bar.destroy()
+        try:
+            if top_bar.winfo_exists():
+                top_bar.destroy()
+        except tk.TclError:
+            pass
         top_bar = None
 
     if top_bar is None:
@@ -593,8 +608,13 @@ def load_file_layout(right_panel, root, db):
     clear_right_panel(right_panel)
 
     if top_bar is not None:
-        top_bar.destroy()
+        try:
+            if top_bar.winfo_exists():
+                top_bar.destroy()
+        except tk.TclError:
+            pass  # The widget is already invalid or belongs to an old root
         top_bar = None
+
     if top_bar is None:
         # Create top bar frame only once
         top_bar = tk.Frame(right_panel, bg="white")
@@ -610,6 +630,8 @@ def load_file_layout(right_panel, root, db):
 
 
 def logout(root):
+    global top_bar
+    top_bar = None
     root.destroy()
     Login.show_login()
 
@@ -644,6 +666,3 @@ def user_panel(user_data, db):
 
     # Start the main event loop
     root.mainloop()
-
-
-
