@@ -20,6 +20,68 @@ tree_frame = None
 top_bar = None
 
 
+def load_barcode(right_panel):
+    global tree, tree_frame
+
+    barcode_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Barcode")
+    if not os.path.exists(barcode_dir):
+        messagebox.showinfo("No Barcode Folder", "The 'Barcode' folder does not exist.")
+        return
+
+    files = [f for f in os.listdir(barcode_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))]
+    if not files:
+        messagebox.showinfo("No Files", "No barcode images found in the 'Barcode' folder.")
+        return
+
+    clear_right_panel(right_panel)
+
+    # tree view
+    if not tree_frame:
+        tree_frame = tk.Frame(right_panel, bg="white")
+        tree_frame.pack(expand=True, fill="both", padx=10, pady=10)
+
+    if not tree:
+        tree = ttk.Treeview(tree_frame, columns="File", show="headings")
+        tree.heading("File", text="Barcode")
+        tree.column("File", anchor="center")
+        tree.grid(row=0, column=0, sticky="nsew")
+
+        scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        scrollbar_y.grid(row=0, column=1, sticky="ns")
+
+        scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+        scrollbar_x.grid(row=1, column=0, sticky="ew")
+
+        tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
+
+
+    for f in files:
+        tree.insert("", "end", values=(f,))
+
+    def open_selected_file(event=None):
+        selected = tree.selection()
+        if not selected:
+            return
+
+        item = tree.item(selected[0])
+        file_name = item["values"][0]
+        file_path = os.path.join(barcode_dir, file_name)
+
+        try:
+            if platform.system() == "Windows":
+                os.startfile(file_path)
+            elif platform.system() == "Darwin":  # macOS
+                subprocess.call(["open", file_path])
+            else:  # Linux
+                subprocess.call(["xdg-open", file_path])
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open file:\n{e}")
+
+    tree.bind("<Double-1>", open_selected_file)
+
+
 def export_and_send_reminders(db):
     today = datetime.today()
     two_months_after = today + timedelta(days=60)
@@ -265,7 +327,7 @@ def clear_right_panel(right_panel):
         tree_frame = None
 
 
-def create_tree_view(right_panel):
+def create_pending_tree_view(right_panel):
     global tree, tree_frame
 
     # tree view
@@ -321,7 +383,7 @@ def view_pending_requests(right_panel, db):
         btn_edit = ttk.Button(top_bar, text="Reject", style="Bold.TButton", width=15, command=lambda: reject_requests(db))
         btn_edit.pack(side="right", pady=(10, 0), padx=5)
 
-    create_tree_view(right_panel)
+    create_pending_tree_view(right_panel)
 
     try:
         # Fetch all documents from the "Pending" collection
@@ -361,11 +423,13 @@ def admin_panel(admin_data, db):
     right_panel.pack(side="right", expand=True, fill="both")
 
     style = ttk.Style()
+    style.theme_use("clam")
     style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=15)
+    style.configure("Treeview.Heading", background="#d3d3d3", foreground="black", font=("Segoe UI", 10, "bold"))
 
     ttk.Button(left_panel, text="View Requests", style="Bold.TButton", command=lambda: view_pending_requests(right_panel, db)).pack(pady=5, padx=10)
     ttk.Button(left_panel, text="Send Reminders", style="Bold.TButton", command=lambda: export_and_send_reminders(db)).pack(pady=5, padx=10)
-    ttk.Button(left_panel, text="Barcode Requests", style="Bold.TButton").pack(pady=5, padx=10)
+    ttk.Button(left_panel, text="All Barcode", style="Bold.TButton", command=lambda: load_barcode(right_panel)).pack(pady=5, padx=10)
 
     ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
 
