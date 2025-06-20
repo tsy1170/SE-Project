@@ -55,7 +55,6 @@ def export_and_send_reminders(db):
 
     # Step 2: Email & Export per user
     for user_id, rows in user_rows.items():
-        # Fetch user's email from "Users" collection
         try:
             user_doc = db.collection("Users").document(user_id).get()
             user_data = user_doc.to_dict()
@@ -63,27 +62,46 @@ def export_and_send_reminders(db):
                 print(f"No email found for UserID: {user_id}")
                 continue
 
-            email = user_data["Email"]
+            user_email = user_data["Email"]
 
-            # Save to Excel
+            # Save to Reminders folder
+            reminders_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Reminders")
+            os.makedirs(reminders_dir, exist_ok=True)
+
             df = pd.DataFrame(rows)
             df = df[["Product_ID", "Product_Name", "Description", "Test_Date"]]
+
             file_name = f"Reminder ({user_id}).xlsx"
-            file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
+            file_path = os.path.join(reminders_dir, file_name)
             df.to_excel(file_path, index=False)
 
-            # Send the Excel file to user's email
+            # Send to user
             send_email_with_attachment(
-                receiver=email,
+                receiver=user_email,
                 subject="Upcoming Product Test Reminder",
                 body=f"Hi {user_data.get('Username', '')},\n\nPlease find your product test reminders attached.\n\nBest regards,\nAdmin",
                 attachment_path=file_path
             )
+            print(f"Sent reminder to {user_email}")
 
-            print(f"Sent reminder to {email}")
+            # Step 3: Also send to all testers
+            testers = db.collection("Tester").stream()
+            for tester in testers:
+                tester_data = tester.to_dict()
+                tester_email = tester_data.get("Email")
+                if tester_email:
+                    send_email_with_attachment(
+                        receiver=tester_email,
+                        subject=f"Reminder copy for UserID: {user_id}",
+                        body=f"Hello Tester,\n\nAttached is the reminder Excel file for UserID {user_id}.\n\nRegards,\nAdmin",
+                        attachment_path=file_path
+                    )
+                    print(f"Also sent to tester: {tester_email}")
 
         except Exception as e:
             print(f"Failed for UserID {user_id}: {e}")
+
+    messagebox.showinfo("Successful", "Reminders sent.")
 
 
 def send_email_with_attachment(receiver, subject, body, attachment_path):
@@ -212,13 +230,13 @@ def approve_requests(db):
         messagebox.showerror("Error", f"Approval failed:\n{e}")
 
 
-def open_barcode_file(save_path):
+def open_barcode_file(saved_path):
     if platform.system() == "Windows":
-        os.startfile(save_path)
+        os.startfile(saved_path)
     elif platform.system() == "Darwin":  # macOS
-        subprocess.run(["open", save_path])
+        subprocess.run(["open", saved_path])
     else:  # Linux
-        subprocess.run(["xdg-open", save_path])
+        subprocess.run(["xdg-open", saved_path])
 
 
 def clear_right_panel(right_panel):
@@ -352,3 +370,4 @@ def admin_panel(admin_data, db):
     ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
 
     root.mainloop()
+
