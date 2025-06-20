@@ -2,15 +2,16 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import pandas as pd
 import re
-import openpyxl
 import os
+import platform
+import subprocess
 import smtplib
 import ssl
 from email.message import EmailMessage
 from datetime import datetime, timedelta
 import barcode
+from barcode import get as get_barcode
 from barcode.writer import ImageWriter
-from PIL import Image, ImageTk
 import Login
 
 
@@ -144,18 +145,22 @@ def approve_requests(db):
         return
 
     try:
-        all_data = []  # For Excel
-        all_ids = []  # For barcode content
+        all_data = []
+        submitted_at = None
+        test_date = None
+        user_id = None
 
         for item in selected:
             values = tree.item(item, "values")
-            product_id, name, desc, test_date, submitted_at_str, user_id = values
+            product_id, name, desc, test_date_str, submitted_at_str, user_id = values
 
             if not submitted_at_str:
                 messagebox.showerror("Error", "Missing 'Submitted At' field.")
                 return
 
+            # Parse date strings
             submitted_at = datetime.strptime(submitted_at_str, "%d-%m-%Y")
+            test_date = datetime.strptime(test_date_str, "%d-%m-%Y")
             collection_name = submitted_at.strftime("%d-%m-%Y")
 
             # Prepare Firestore data
@@ -163,24 +168,23 @@ def approve_requests(db):
                 "Product_ID": product_id,
                 "Product_Name": name,
                 "Description": desc,
-                "Test_Date": test_date,
+                "Test_Date": test_date.strftime("%d-%m-%Y"),
                 "Submitted_At": submitted_at.strftime("%d-%m-%Y"),
                 "UserID": user_id
             }
 
-            # Move to approved collection
+            # Write to Firestore
             db.collection(collection_name).document(product_id).set(data)
             db.collection("Pending").document(product_id).delete()
 
-            # Prepare for Excel and barcode
+            # For Excel
             data.pop("UserID")
             all_data.append(data)
-            all_ids.append(product_id)
 
-            # Remove from UI
+            # Remove from Treeview
             tree.delete(item)
 
-        # Save to Excel
+        # Save to Excel file
         file_name = f"{collection_name}.xlsx"
         file_path = os.path.join(os.getcwd(), file_name)
 
@@ -190,60 +194,56 @@ def approve_requests(db):
             df = pd.concat([existing_df, df], ignore_index=True)
         df.to_excel(file_path, index=False)
 
-        # Generate a single barcode for the batch
-        from PIL import Image, ImageTk
-        import tkinter as tk
+        # Barcode content and file name
+        barcode_content = f"{submitted_at.strftime('%d%m%Y')}-{test_date.strftime('%d%m%Y')}"
+        barcode_filename = f"Batch_{submitted_at.strftime('%d%m%Y')}_{user_id}"
 
-        # ... inside your approve_requests function ...
-
-        # Generate a single barcode for the batch
-        barcode_data = "-".join(all_ids)
-        code128 = barcode.get("code128", barcode_data, writer=ImageWriter())
-
-        # Create 'Barcode' folder if it doesn't exist
         barcode_dir = os.path.join(os.getcwd(), "Barcode")
         os.makedirs(barcode_dir, exist_ok=True)
-
-        # Save barcode with format: Batch_DDMMYYYY_UserID
-        barcode_filename = f"Batch_{collection_name.replace('-', '')}_{user_id}"
         barcode_path = os.path.join(barcode_dir, barcode_filename)
+
+        code128 = get_barcode("code128", barcode_content, writer=ImageWriter())
         saved_path = code128.save(barcode_path)
 
-        # --- Show Barcode Image in a Tkinter popup ---
-        def show_barcode_image(path):
-            popup = tk.Toplevel()
-            popup.title("Generated Barcode")
-            img = Image.open(path)
-            img = img.resize((400, 100))  # Resize to fit window if needed
-            tk_img = ImageTk.PhotoImage(img)
-
-            label = tk.Label(popup, image=tk_img)
-            label.image = tk_img  # keep a reference
-            label.pack(padx=10, pady=10)
-
-            popup.lift()
-            popup.focus_force()
-
-        show_barcode_image(saved_path)
-
-
+        open_barcode_file(saved_path)
         messagebox.showinfo("Success", "Selected request(s) approved")
+
     except Exception as e:
         messagebox.showerror("Error", f"Approval failed:\n{e}")
+
+
+def open_barcode_file(save_path):
+    if platform.system() == "Windows":
+        os.startfile(save_path)
+    elif platform.system() == "Darwin":  # macOS
+        subprocess.run(["open", save_path])
+    else:  # Linux
+        subprocess.run(["xdg-open", save_path])
 
 
 def clear_right_panel(right_panel):
     global tree, tree_frame
 
     for widget in right_panel.winfo_children():
-        widget.destroy()
+        try:
+            widget.destroy()
+        except tk.TclError:
+            pass
 
     if tree:
-        tree.destroy()
+        try:
+            if tree.winfo_exists():
+                tree.destroy()
+        except tk.TclError:
+            pass
         tree = None
 
     if tree_frame:
-        tree_frame.destroy()
+        try:
+            if tree_frame.winfo_exists():
+                tree_frame.destroy()
+        except tk.TclError:
+            pass
         tree_frame = None
 
 
@@ -285,7 +285,11 @@ def view_pending_requests(right_panel, db):
 
     # top bar navigation
     if top_bar is not None:
-        top_bar.destroy()
+        try:
+            if top_bar.winfo_exists():
+                top_bar.destroy()
+        except tk.TclError:
+            pass  # The widget is already invalid or belongs to an old root
         top_bar = None
 
     if top_bar is None:
@@ -321,6 +325,8 @@ def view_pending_requests(right_panel, db):
 
 
 def logout(root):
+    global top_bar
+    top_bar = None
     root.destroy()
     Login.show_login()
 
@@ -346,4 +352,3 @@ def admin_panel(admin_data, db):
     ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
 
     root.mainloop()
-
