@@ -5,50 +5,50 @@ from firebase_admin import credentials, firestore
 
 import admin_page
 import user_page
+import tester_page
 
 # ----------------- Firestore Setup -----------------
-cred = credentials.Certificate("se-project-ad0dd-firebase-adminsdk-fbsvc-12d8d15ff2.json")  # your Firebase JSON
+cred = credentials.Certificate("se-project-ad0dd-firebase-adminsdk-fbsvc-fcfd17746c.json")  # your Firebase JSON
 if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 # ----------------- Login Logic -----------------
 def login(root, entry_ID, entry_password):
-    ID = entry_ID.get().strip()
-    password = entry_password.get().strip()
+    ID = entry_ID.get()
+    password = entry_password.get()
 
     if not ID or not password:
-        messagebox.showwarning("Missing Info", "Please enter both ID and Password.")
+        messagebox.showerror("Error", "Please enter both ID and password.")
         return
 
-    # Check Admin
-    admin_doc = db.collection("Admin").document(ID).get()
-    if admin_doc.exists:
-        admin_data = admin_doc.to_dict()
-        if admin_data["Password"] == password:
-            messagebox.showinfo("Login Success", f"Welcome Admin: {ID}")
+    try:
+        # First, check Admin
+        admin_doc = db.collection("Admin").document(ID).get()
+        if admin_doc.exists and admin_doc.to_dict()["Password"] == password:
             root.destroy()
-            admin_page.admin_panel(admin_data, db)
-            return
-        else:
-            messagebox.showerror("Error", "Incorrect admin password.")
+            admin_page.admin_panel(admin_doc.to_dict(), db)
             return
 
-    # Check User
-    user_doc = db.collection("Users").document(ID).get()
-    if user_doc.exists:
-        user_data = user_doc.to_dict()
-        if user_data["Password"] == password:
-            messagebox.showinfo("Login Success", f"Welcome User: {ID}")
+        # Then check Users
+        user_doc = db.collection("Users").document(ID).get()
+        if user_doc.exists and user_doc.to_dict()["Password"] == password:
             root.destroy()
-            user_page.user_panel(user_data, db)
-            return
-        else:
-            messagebox.showerror("Error", "Incorrect user password.")
+            user_page.user_panel(user_doc.to_dict(), db)
             return
 
-    # If not found
-    messagebox.showerror("Login Failed", "Account not found.")
+        # Then check Tester
+        tester_doc = db.collection("Tester").document(ID).get()
+        if tester_doc.exists and tester_doc.to_dict()["Password"] == password:
+            root.destroy()
+            tester_page.tester_panel(tester_doc.to_dict(), db)
+            return
+
+        # If not found in any
+        messagebox.showerror("Login Failed", "Invalid ID or password.")
+
+    except Exception as e:
+        messagebox.showerror("Error", f"An error occurred:\n{e}")
 
 
 # ----------------- Login GUI -----------------
