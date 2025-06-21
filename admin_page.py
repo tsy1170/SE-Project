@@ -19,6 +19,12 @@ tree = None
 tree_frame = None
 top_bar = None
 
+def clear_right_panel(panel):
+    global tree, tree_frame
+    for widget in panel.winfo_children():
+        widget.destroy()
+    tree = None
+    tree_frame = None
 
 def load_barcode(right_panel):
     global tree, tree_frame
@@ -170,8 +176,7 @@ def export_and_send_reminders(db):
     messagebox.showinfo("Successful", "Reminders sent.")
 
 
-def send_email_with_attachment(receiver, subject, body, attachment_path):
-    # Replace these with your email credentials
+def send_email_with_attachment(receiver, subject, body, attachment_path=None):
     sender_email = "tsy1170@gmail.com"
     app_password = "khvvzmuhytpinkxe"
 
@@ -181,10 +186,11 @@ def send_email_with_attachment(receiver, subject, body, attachment_path):
     msg["Subject"] = subject
     msg.set_content(body)
 
-    with open(attachment_path, "rb") as f:
-        file_data = f.read()
-        file_name = os.path.basename(attachment_path)
-        msg.add_attachment(file_data, maintype="application", subtype="octet-stream", filename=file_name)
+    if attachment_path:
+        with open(attachment_path, "rb") as f:
+            file_data = f.read()
+            file_name = os.path.basename(attachment_path)
+            msg.add_attachment(file_data, maintype="application", subtype="octet-stream", filename=file_name)
 
     context = ssl._create_unverified_context()
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
@@ -208,6 +214,8 @@ def reject_requests(db):
         for item in selected:
             values = tree.item(item, "values")
             product_id = values[0]
+            product_name = values[1]
+            user_id = values[5]  # UserID is at index 5
 
             # Delete from Firestore
             db.collection("Pending").document(product_id).delete()
@@ -215,10 +223,42 @@ def reject_requests(db):
             # Remove from Treeview
             tree.delete(item)
 
+            # Get user email & name
+            user_doc = db.collection("Users").document(user_id).get()
+            user_data = user_doc.to_dict()
+            if user_data and "Email" in user_data:
+                user_email = user_data["Email"]
+                username = user_data.get("Username", "User")
+
+                subject = "Product Request Rejected"
+                body = (
+                    f"Hi {username},\n\n"
+                    f"Your request for product '{product_name}' (ID: {product_id}) has been rejected.\n\n"
+                    f"Regards,\nAdmin"
+                )
+
+                send_email_with_attachment(
+                    receiver=user_email,
+                    subject=subject,
+                    body=body,
+                    attachment_path=None  # No attachment for rejection
+                )
+
         messagebox.showinfo("Rejected", "Selected request(s) have been rejected and removed.")
     except Exception as e:
         messagebox.showerror("Error", f"Failed to reject request(s):\n{e}")
 
+
+def open_barcode_file(path):
+    try:
+        if platform.system() == "Windows":
+            os.startfile(path)
+        elif platform.system() == "Darwin":  # macOS
+            subprocess.call(["open", path])
+        else:  # Linux
+            subprocess.call(["xdg-open", path])
+    except Exception as e:
+        messagebox.showerror("Error", f"Could not open barcode file:\n{e}")
 
 def approve_requests(db):
     global tree
@@ -289,6 +329,21 @@ def approve_requests(db):
         code128 = get_barcode("code128", barcode_content, writer=ImageWriter())
         saved_path = code128.save(barcode_path)
 
+        # Notify the user via email
+        try:
+            user_doc = db.collection("Users").document(user_id).get()
+            user_data = user_doc.to_dict()
+            if user_data and "Email" in user_data:
+                user_email = user_data["Email"]
+                send_email_with_attachment(
+                    receiver=user_email,
+                    subject="Your Request Has Been Approved",
+                    body=f"Hi {user_data.get('Username', '')},\n\nYour product submission (ID: {product_id}) has been approved.\n\nBest regards,\nAdmin",
+                    attachment_path=saved_path  # barcode image as attachment
+                )
+        except Exception as e:
+            print(f"Failed to send email to user {user_id}: {e}")
+
         open_barcode_file(saved_path)
         messagebox.showinfo("Success", "Selected request(s) approved")
 
@@ -296,39 +351,99 @@ def approve_requests(db):
         messagebox.showerror("Error", f"Approval failed:\n{e}")
 
 
-def open_barcode_file(saved_path):
-    if platform.system() == "Windows":
-        os.startfile(saved_path)
-    elif platform.system() == "Darwin":  # macOS
-        subprocess.run(["open", saved_path])
-    else:  # Linux
-        subprocess.run(["xdg-open", saved_path])
+def manage_users(right_panel, db):
+    def refresh_users():
+        for item in tree.get_children():
+            tree.delete(item)
+        docs = db.collection("Users").stream()
+        for doc in docs:
+            data = doc.to_dict()
+            tree.insert("", "end", iid=doc.id, values=(
+                data.get("UserID", ""),
+                data.get("Username", ""),
+                data.get("Email", ""),
+                data.get("Password", "")
+            ))
 
+    def add_user():
+        user_id = simpledialog.askstring("Input", "Enter User ID:")
+        username = simpledialog.askstring("Input", "Enter Username:")
+        email = simpledialog.askstring("Input", "Enter Email:")
+        password = simpledialog.askstring("Input", "Enter Password:")
+        if user_id and username and email and password:
+            db.collection("Users").document(user_id).set({
+                "UserID": user_id,
+                "Username": username,
+                "Email": email,
+                "Password": password
+            })
+            refresh_users()
+            messagebox.showinfo("Success", "User added successfully.")
 
-def clear_right_panel(right_panel):
-    global tree, tree_frame
+    def delete_user():
+        selected = tree.selection()
+        if not selected:
+            messagebox.showwarning("Warning", "Please select a user to delete.")
+            return
+        user_id = tree.item(selected[0])['values'][0]
+        db.collection("Users").document(user_id).delete()
+        refresh_users()
+        messagebox.showinfo("Deleted", f"User {user_id} deleted.")
+
+    def edit_user():
+        selected = tree.selection()
+        if not selected:
+            messagebox.showwarning("Warning", "Please select a user to edit.")
+            return
+
+        old_user_id = tree.item(selected[0])['values'][0]
+        current_values = tree.item(selected[0])['values']
+
+        new_user_id = simpledialog.askstring("Input", "Edit User ID:", initialvalue=old_user_id)
+        username = simpledialog.askstring("Input", "Edit Username:", initialvalue=current_values[1])
+        email = simpledialog.askstring("Input", "Edit Email:", initialvalue=current_values[2])
+        password = simpledialog.askstring("Input", "Edit Password:", initialvalue=current_values[3])
+
+        if new_user_id and username and email and password:
+            new_data = {
+                "UserID": new_user_id,
+                "Username": username,
+                "Email": email,
+                "Password": password
+            }
+
+            try:
+                if new_user_id != old_user_id:
+                    # Copy to new document
+                    db.collection("Users").document(new_user_id).set(new_data)
+                    # Delete old document
+                    db.collection("Users").document(old_user_id).delete()
+                else:
+                    # Just update existing document
+                    db.collection("Users").document(old_user_id).update(new_data)
+
+                refresh_users()
+                messagebox.showinfo("Updated", f"User {old_user_id} updated.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to update user:\n{e}")
 
     for widget in right_panel.winfo_children():
-        try:
-            widget.destroy()
-        except tk.TclError:
-            pass
+        widget.destroy()
 
-    if tree:
-        try:
-            if tree.winfo_exists():
-                tree.destroy()
-        except tk.TclError:
-            pass
-        tree = None
+    toolbar = tk.Frame(right_panel, bg="white")
+    toolbar.pack(fill="x", padx=8, pady=5)
+    ttk.Button(toolbar, text="Add User", command=add_user).pack(side="left", padx=5)
+    ttk.Button(toolbar, text="Delete User", command=delete_user).pack(side="left", padx=5)
+    ttk.Button(toolbar, text="Edit User", command=edit_user).pack(side="left", padx=5)
 
-    if tree_frame:
-        try:
-            if tree_frame.winfo_exists():
-                tree_frame.destroy()
-        except tk.TclError:
-            pass
-        tree_frame = None
+    columns = ("UserID", "Username", "Email", "Password")
+    tree = ttk.Treeview(right_panel, columns=columns, show="headings")
+    for col in columns:
+        tree.heading(col, text=col)
+        tree.column(col, width=150, anchor="center")
+    tree.pack(fill="both", expand=True, padx=10, pady=10)
+
+    refresh_users()
 
 
 def create_pending_tree_view(right_panel):
@@ -365,7 +480,9 @@ def create_pending_tree_view(right_panel):
 def view_pending_requests(right_panel, db):
     global top_bar
 
-    clear_right_panel(right_panel)
+    def clear_right_panel(panel):
+        for widget in panel.winfo_children():
+            widget.destroy()
 
     # top bar navigation
     if top_bar is not None:
@@ -373,7 +490,7 @@ def view_pending_requests(right_panel, db):
             if top_bar.winfo_exists():
                 top_bar.destroy()
         except tk.TclError:
-            pass  
+            pass
         top_bar = None
 
     if top_bar is None:
@@ -432,9 +549,7 @@ def admin_panel(admin_data, db):
 
     ttk.Button(left_panel, text="View Requests", style="Bold.TButton", command=lambda: view_pending_requests(right_panel, db)).pack(pady=5, padx=10)
     ttk.Button(left_panel, text="Send Reminders", style="Bold.TButton", command=lambda: export_and_send_reminders(db)).pack(pady=5, padx=10)
-    ttk.Button(left_panel, text="All Barcode", style="Bold.TButton", command=lambda: load_barcode(right_panel)).pack(pady=5, padx=10)
-
+    ttk.Button(left_panel, text="Manage Users", style="Bold.TButton", command=lambda: manage_users(right_panel, db)).pack(pady=5, padx=10)
     ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
 
     root.mainloop()
-
