@@ -206,15 +206,16 @@ def edit_selected_data(root, db):
 
     # ---------------- Edit UI ----------------
     form = tk.Toplevel(root)
+    form.configure(bg="White")
     form.title("Edit Product")
-    form.geometry("420x250")
+    form.geometry("450x350")
     entries = {}
 
     for i, col in enumerate(df.columns):
-        tk.Label(form, text=col).grid(row=i, column=0, sticky="e", pady=5, padx=5)
+        ttk.Label(form, text=col+":", style="Custom.TLabel").grid(row=i, column=0, sticky="e", pady=5, padx=(37, 10))
 
         if col == "Product_ID" or col == "Submitted_At":
-            entry = tk.Entry(form, width=30)
+            entry = ttk.Entry(form, width=30, font=("Arial", 9))
             entry.insert(0, row_values[i])
             entry.configure(state="disabled")  # Make it read-only
             entry.grid(row=i, column=1, pady=5, padx=5)
@@ -230,8 +231,15 @@ def edit_selected_data(root, db):
             date_entry.grid(row=i, column=1, pady=5, padx=5)
             entries[col] = date_entry
 
+        elif col == "Description":
+            entry = tk.Text(form, height=3, width=30, font=("Arial", 9))
+            entry.configure(highlightthickness=1, highlightbackground="#ccc", highlightcolor="#4a90e2")
+            entry.insert("1.0", row_values[i])
+            entry.grid(row=2, column=1, pady=5, padx=5)
+            entries[col] = entry
+
         else:
-            entry = tk.Entry(form, width=30)
+            entry = ttk.Entry(form, width=30, font=("Arial", 9))
             entry.insert(0, row_values[i])
             entry.grid(row=i, column=1, pady=5, padx=5)
             entries[col] = entry
@@ -279,7 +287,7 @@ def edit_selected_data(root, db):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update:\n{e}")
 
-    tk.Button(form, text="Save Changes", command=save_edit).grid(row=len(df.columns), columnspan=2, pady=15)
+    ttk.Button(form, text="Save Changes", command=save_edit).grid(row=len(df.columns), columnspan=2, pady=15, padx=(60, 0))
 
 
 def edit_pending_items(root, db):
@@ -296,26 +304,28 @@ def edit_pending_items(root, db):
 
     # Create Edit Form
     form = tk.Toplevel(root)
+    form.configure(bg="White")
     form.title("Edit Item")
-    form.geometry("400x250")
+    form.geometry("420x270")
 
-    ttk.Label(form, text="Product ID").grid(row=0, column=0, sticky="e", pady=5, padx=5)
+    ttk.Label(form, text="Product ID:", style="Custom.TLabel").grid(row=0, column=0, sticky="e", pady=5, padx=(24, 10))
     entry_id = ttk.Entry(form, width=30, font=("Arial", 9))
     entry_id.insert(0, product_id)
     entry_id.config(state="disabled")  # Product ID should not be editable
     entry_id.grid(row=0, column=1, pady=5, padx=5)
 
-    ttk.Label(form, text="Product Name").grid(row=1, column=0, sticky="e", pady=5, padx=5)
+    ttk.Label(form, text="Product Name:", style="Custom.TLabel").grid(row=1, column=0, sticky="e", pady=5, padx=(24, 10))
     entry_name = ttk.Entry(form, width=30, font=("Arial", 9))
     entry_name.insert(0, name)
     entry_name.grid(row=1, column=1, pady=5, padx=5)
 
-    ttk.Label(form, text="Description").grid(row=2, column=0, sticky="e", pady=5, padx=5)
+    ttk.Label(form, text="Description:", style="Custom.TLabel").grid(row=2, column=0, sticky="e", pady=5, padx=(24, 10))
     text_desc = tk.Text(form, height=3, width=30, font=("Arial", 9))
+    text_desc.configure(highlightthickness=1, highlightbackground="#ccc", highlightcolor="#4a90e2")
     text_desc.insert("1.0", desc)
     text_desc.grid(row=2, column=1, pady=5, padx=5)
 
-    ttk.Label(form, text="Test Date").grid(row=3, column=0, sticky="e", pady=5, padx=5)
+    ttk.Label(form, text="Test Date:", style="Custom.TLabel").grid(row=3, column=0, sticky="e", pady=5, padx=(24, 10))
     date_entry = DateEntry(form, width=30, background='gray',
                            foreground='white', borderwidth=2, date_pattern='dd-mm-yyyy')
     date_entry.set_date(datetime.strptime(test_date, "%d-%m-%Y"))
@@ -365,7 +375,7 @@ def edit_pending_items(root, db):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to update item:\n{e}")
 
-    tk.Button(form, text="Update", command=update).grid(row=5, columnspan=2, pady=10)
+    ttk.Button(form, text="Update", command=update).grid(row=5, columnspan=2, pady=10, padx=(45, 0))
 
 
 
@@ -398,24 +408,26 @@ def delete_pending_items(db):
 
 
 
-def add_new_batch_to_pending(right_panel, root, db, user_data):
+def add_items_to_pending(right_panel, root, db, user_data):
     form = tk.Toplevel(root)
+    form.configure(bg="White")
     form.title("Add new Batch")
-    form.geometry("400x200")
+    form.geometry("420x270")
 
-    ttk.Label(form, text="Product ID").grid(row=1, column=0, sticky="e", pady=5, padx=5)
+    ttk.Label(form, text="Product ID:", style="Custom.TLabel").grid(row=1, column=0, sticky="e", pady=5, padx=(24, 10))
     entry_id = ttk.Entry(form, width=30, font=("Arial", 9))
     entry_id.grid(row=1, column=1, pady=5, padx=5)
 
-    ttk.Label(form, text="Product Name").grid(row=2, column=0, sticky="e", pady=5, padx=5)
+    ttk.Label(form, text="Product Name:", style="Custom.TLabel").grid(row=2, column=0, sticky="e", pady=5, padx=(24, 10))
     entry_name = ttk.Entry(form, width=30, font=("Arial", 9))
     entry_name.grid(row=2, column=1, pady=5, padx=5)
 
-    ttk.Label(form, text="Description").grid(row=3, column=0, sticky="e", pady=5, padx=5)
+    ttk.Label(form, text="Description:", style="Custom.TLabel").grid(row=3, column=0, sticky="e", pady=5, padx=(24, 10))
     text_desc = tk.Text(form, height=3, width=30, font=("Arial", 9))
+    text_desc.configure(highlightthickness=1, highlightbackground="#ccc", highlightcolor="#4a90e2")
     text_desc.grid(row=3, column=1, pady=5, padx=5)
 
-    ttk.Label(form, text="Test Date").grid(row=4, column=0, sticky="e", pady=5, padx=5)
+    ttk.Label(form, text="Test Date:", style="Custom.TLabel").grid(row=4, column=0, sticky="e", pady=5, padx=(24, 10))
     date_entry = DateEntry(form, width=30, background='gray',
                            foreground='white', borderwidth=2, date_pattern='dd-mm-yyyy')
     date_entry.grid(row=4, column=1, pady=5, padx=5)
@@ -484,7 +496,7 @@ def add_new_batch_to_pending(right_panel, root, db, user_data):
             messagebox.showerror("Error", f"Failed to save: {e}")
 
 
-    tk.Button(form, text="Save", command=submit).grid(row=9, columnspan=2, pady=10)
+    ttk.Button(form, text="Save", command=submit).grid(row=9, columnspan=2, pady=10, padx=(45, 0))
 
 
 def load_pending_to_tree(right_panel, db):
@@ -551,7 +563,7 @@ def add_batch_layout(right_panel, root, db, user_data):
         top_bar = tk.Frame(right_panel, bg="white")
         top_bar.pack(fill="x", padx=8, pady=5)
 
-        btn_add = ttk.Button(top_bar, text="Add", style="Bold.TButton", width=15, command=lambda: add_new_batch_to_pending(right_panel, root, db, user_data))
+        btn_add = ttk.Button(top_bar, text="Add", style="Bold.TButton", width=15, command=lambda: add_items_to_pending(right_panel, root, db, user_data))
         btn_add.pack(side="right", pady=(10, 0), padx=5)
 
         btn_edit = ttk.Button(top_bar, text="Delete", style="Bold.TButton", width=15, command=lambda: delete_pending_items(db))
@@ -611,16 +623,17 @@ def user_panel(user_data, db):
     style.theme_use("clam")
     style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=15)
     style.configure("Treeview.Heading", background="#d3d3d3", foreground="black", font=("Segoe UI", 10, "bold"))
+    style.configure("Custom.TLabel", background="White", foreground="#333333", font=("Segoe UI", 10, "bold"), padding=5)
 
     # Add buttons to left panel
-    btn1 = ttk.Button(left_panel, text="Load File", style="Bold.TButton", command=lambda: load_excel_file(right_panel, root, db))
-    btn1.pack(pady=(10,3), padx=8, fill="x")
+    btn_load_file = ttk.Button(left_panel, text="Load File", style="Bold.TButton", command=lambda: load_excel_file(right_panel, root, db))
+    btn_load_file.pack(pady=(10,3), padx=8, fill="x")
 
-    btn2 = ttk.Button(left_panel, text="Clear all", style="Bold.TButton", command=lambda: clear_right_panel(right_panel))
-    btn2.pack(pady=3, padx=8, fill="x")
+    btn_clear = ttk.Button(left_panel, text="Clear all", style="Bold.TButton", command=lambda: clear_right_panel(right_panel))
+    btn_clear.pack(pady=3, padx=8, fill="x")
 
-    btn3 = ttk.Button(left_panel, text="Add Batch", style="Bold.TButton", command=lambda: add_batch_layout(right_panel, root, db, user_data))
-    btn3.pack(pady=3, padx=8, fill="x")
+    btn_add_batch = ttk.Button(left_panel, text="Add Batch", style="Bold.TButton", command=lambda: add_batch_layout(right_panel, root, db, user_data))
+    btn_add_batch.pack(pady=3, padx=8, fill="x")
 
     ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
 
