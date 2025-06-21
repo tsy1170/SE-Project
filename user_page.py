@@ -613,16 +613,19 @@ def user_panel(user_data, db):
     style.configure("Treeview.Heading", background="#d3d3d3", foreground="black", font=("Segoe UI", 10, "bold"))
 
     # Add buttons to left panel
-    btn1 = ttk.Button(left_panel, text="Load File", style="Bold.TButton", command=lambda: load_excel_file(right_panel, root, db))
-    btn1.pack(pady=(10,3), padx=8, fill="x")
+    btn_load_file = ttk.Button(left_panel, text="Load File", style="Bold.TButton", command=lambda: load_excel_file(right_panel, root, db))
+    btn_load_file.pack(pady=(10,3), padx=8, fill="x")
 
-    btn2 = ttk.Button(left_panel, text="Clear all", style="Bold.TButton", command=lambda: clear_right_panel(right_panel))
-    btn2.pack(pady=3, padx=8, fill="x")
+    btn_clear = ttk.Button(left_panel, text="Clear all", style="Bold.TButton", command=lambda: clear_right_panel(right_panel))
+    btn_clear.pack(pady=3, padx=8, fill="x")
 
-    btn3 = ttk.Button(left_panel, text="Add Batch", style="Bold.TButton", command=lambda: add_batch_layout(right_panel, root, db, user_data))
-    btn3.pack(pady=3, padx=8, fill="x")
+    btn_add_batch = ttk.Button(left_panel, text="Add Batch", style="Bold.TButton", command=lambda: add_batch_layout(right_panel, root, db, user_data))
+    btn_add_batch.pack(pady=3, padx=8, fill="x")
 
     ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
 
     # Start the main event loop
     root.mainloop()
+
+
+
