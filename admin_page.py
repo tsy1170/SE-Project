@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, simpledialog
+from tkinter import ttk, messagebox
 import pandas as pd
 import re
 import os
@@ -19,9 +19,219 @@ tree = None
 tree_frame = None
 top_bar = None
 
-def clear_right_panel(panel):
-    for widget in panel.winfo_children():
-        widget.destroy()
+
+def edit_user(right_panel, db):
+    global tree
+
+    selected = tree.selection()
+    if not selected or len(selected) != 1:
+        messagebox.showwarning("Selection Error", "Please select exactly one user to edit.")
+        return
+
+    item = selected[0]
+    values = tree.item(item, "values")
+    user_id, username, email, password = values
+
+    form = tk.Toplevel(right_panel)
+    form.configure(bg="White")
+    form.title(f"Edit User: {user_id}")
+    form.geometry("350x300")
+
+    labels = ["User ID", "Username", "Email", "Password"]
+    entries = {}
+
+    # Create label-entry pairs
+    for i, label in enumerate(labels):
+        ttk.Label(form, text=label+":", style="Custom.TLabel").grid(row=i, column=0, padx=(23, 10), pady=10, sticky="e")
+        entry = ttk.Entry(form, width=30)
+        entry.grid(row=i, column=1, padx=10, pady=10)
+        entries[label] = entry
+
+    # Fill in existing values
+    entries["User ID"].insert(0, user_id)
+    entries["User ID"].config(state="disabled")
+    entries["Username"].insert(0, username)
+    entries["Email"].insert(0, email)
+    entries["Password"].insert(0, password)
+
+    def submit_update():
+        updated_data = {
+            "Username": entries["Username"].get().strip(),
+            "Email": entries["Email"].get().strip(),
+            "Password": entries["Password"].get().strip()
+        }
+
+        if not all(updated_data.values()):
+            messagebox.showwarning("Missing Info", "All fields are required.")
+            form.lift()
+            form.focus_force()
+            return
+
+        email_pattern = r"^[\w\.-]+@[\w\.-]+\.\w+$"
+        if not re.match(email_pattern, updated_data["Email"]):
+            messagebox.showerror("Invalid Email", "Please enter a valid email address.")
+            form.lift()
+            form.focus_force()
+            return
+
+        try:
+            db.collection("Users").document(user_id).update(updated_data)
+            messagebox.showinfo("Success", "User information updated.")
+            form.destroy()
+            display_all_users(right_panel, db)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update user:\n{e}")
+
+    ttk.Button(form, text="Update", command=submit_update).grid(row=5, column=0, columnspan=2, pady=15, padx=(32, 0))
+
+
+def delete_user(right_panel, db):
+    global tree
+
+    selected = tree.selection()
+    if not selected:
+        messagebox.showwarning("No Selection", "Please select a user to delete.")
+        return
+
+    confirm = messagebox.askyesno("Confirm Delete", "Are you sure you want to delete the selected user(s)?")
+    if not confirm:
+        return
+
+    try:
+        for item in selected:
+            values = tree.item(item, "values")
+            user_id = values[0]
+
+            # Delete from Firestore
+            db.collection("Users").document(user_id).delete()
+
+            # Remove from Treeview
+            tree.delete(item)
+
+        messagebox.showinfo("Deleted", "Selected user(s) have been deleted.")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to delete user(s):\n{e}")
+
+
+def add_user(right_panel, db):
+    form = tk.Toplevel(right_panel)
+    form.configure(bg="White")
+    form.title("Add New User")
+    form.geometry("350x300")
+
+    # Labels and Entries
+    labels = ["User ID", "Username", "Email", "Password"]
+    entries = {}
+
+    for i, label in enumerate(labels):
+        ttk.Label(form, text=label+":", style="Custom.TLabel").grid(row=i, column=0, padx=(23, 10), pady=10, sticky="e")
+        entry = ttk.Entry(form, width=30)
+        entry.grid(row=i, column=1, padx=10, pady=10)
+        entries[label] = entry
+
+    def submit_user():
+        user_id = entries["User ID"].get().strip()
+        username = entries["Username"].get().strip()
+        email = entries["Email"].get().strip()
+        password = entries["Password"].get().strip()
+
+        if not user_id or not username or not email or not password:
+            messagebox.showwarning("Missing Info", "All fields are required.")
+            form.lift()
+            form.focus_force()
+            return
+
+        email_pattern = r"^[\w\.-]+@[\w\.-]+\.\w+$"
+        if not re.match(email_pattern, email):
+            messagebox.showerror("Invalid Email", "Please enter a valid email address.")
+            form.lift()
+            form.focus_force()
+            return
+
+        try:
+            # Write to Firestore
+            db.collection("Users").document(user_id).set({
+                "Username": username,
+                "Email": email,
+                "Password": password,
+                "Joined": datetime.now()
+            })
+            messagebox.showinfo("Success", "User added successfully.")
+            form.destroy()
+            display_all_users(right_panel, db)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to add user:\n{e}")
+
+    # Submit button
+    ttk.Button(form, text="Submit", command=submit_user).grid(row=len(labels), column=0, columnspan=2, pady=20, padx=(32, 0))
+
+
+def display_all_users(right_panel, db):
+    global top_bar, tree, tree_frame
+
+    clear_right_panel(right_panel)
+
+    if top_bar is not None:
+        try:
+            if top_bar.winfo_exists():
+                top_bar.destroy()
+        except tk.TclError:
+            pass
+        top_bar = None
+
+    if top_bar is None:
+        top_bar = tk.Frame(right_panel, bg="white")
+        top_bar.pack(fill="x", padx=8, pady=5)
+
+        btn_add_user = ttk.Button(top_bar, text="Add User", style="Bold.TButton", width=15, command=lambda: add_user(right_panel, db))
+        btn_add_user.pack(side="right", pady=(10, 0), padx=5)
+
+        btn_delete_user = ttk.Button(top_bar, text="Delete User", style="Bold.TButton", width=15, command=lambda: delete_user(right_panel, db))
+        btn_delete_user.pack(side="right", pady=(10, 0), padx=5)
+
+        btn_edit_user = ttk.Button(top_bar, text="Edit User", style="Bold.TButton", width=15, command=lambda: edit_user(right_panel, db))
+        btn_edit_user.pack(side="right", pady=(10, 0), padx=5)
+
+    # Create Treeview
+    if not tree_frame:
+        tree_frame = tk.Frame(right_panel, bg="white")
+        tree_frame.pack(expand=True, fill="both", padx=10, pady=10)
+
+    if not tree:
+        tree = ttk.Treeview(tree_frame,
+                            columns=("User ID", "Username", "Email", "Password"),
+                            show="headings")
+        tree.heading("User ID", text="User ID")
+        tree.heading("Username", text="Username")
+        tree.heading("Email", text="Email")
+        tree.heading("Password", text="Password")
+        tree.grid(row=0, column=0, sticky="nsew")
+
+        scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        scrollbar_y.grid(row=0, column=1, sticky="ns")
+
+        scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+        scrollbar_x.grid(row=1, column=0, sticky="ew")
+
+        tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
+
+    # Load users from Firestore
+    try:
+        users = db.collection("Users").stream()
+
+        for user in users:
+            data = user.to_dict()
+            tree.insert("", "end", values=(
+                user.id,
+                data.get("Username", ""),
+                data.get("Email", ""),
+                data.get("Password", "")
+            ))
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to load users:\n{e}")
+
 
 def load_barcode(right_panel):
     global tree, tree_frame
@@ -173,7 +383,8 @@ def export_and_send_reminders(db):
     messagebox.showinfo("Successful", "Reminders sent.")
 
 
-def send_email_with_attachment(receiver, subject, body, attachment_path=None):
+def send_email_with_attachment(receiver, subject, body, attachment_path):
+    # Replace these with your email credentials
     sender_email = "tsy1170@gmail.com"
     app_password = "khvvzmuhytpinkxe"
 
@@ -183,11 +394,10 @@ def send_email_with_attachment(receiver, subject, body, attachment_path=None):
     msg["Subject"] = subject
     msg.set_content(body)
 
-    if attachment_path:
-        with open(attachment_path, "rb") as f:
-            file_data = f.read()
-            file_name = os.path.basename(attachment_path)
-            msg.add_attachment(file_data, maintype="application", subtype="octet-stream", filename=file_name)
+    with open(attachment_path, "rb") as f:
+        file_data = f.read()
+        file_name = os.path.basename(attachment_path)
+        msg.add_attachment(file_data, maintype="application", subtype="octet-stream", filename=file_name)
 
     context = ssl._create_unverified_context()
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
@@ -211,8 +421,6 @@ def reject_requests(db):
         for item in selected:
             values = tree.item(item, "values")
             product_id = values[0]
-            product_name = values[1]
-            user_id = values[5]  # UserID is at index 5
 
             # Delete from Firestore
             db.collection("Pending").document(product_id).delete()
@@ -220,42 +428,10 @@ def reject_requests(db):
             # Remove from Treeview
             tree.delete(item)
 
-            # Get user email & name
-            user_doc = db.collection("Users").document(user_id).get()
-            user_data = user_doc.to_dict()
-            if user_data and "Email" in user_data:
-                user_email = user_data["Email"]
-                username = user_data.get("Username", "User")
-
-                subject = "Product Request Rejected"
-                body = (
-                    f"Hi {username},\n\n"
-                    f"Your request for product '{product_name}' (ID: {product_id}) has been rejected.\n\n"
-                    f"Regards,\nAdmin"
-                )
-
-                send_email_with_attachment(
-                    receiver=user_email,
-                    subject=subject,
-                    body=body,
-                    attachment_path=None  # No attachment for rejection
-                )
-
         messagebox.showinfo("Rejected", "Selected request(s) have been rejected and removed.")
     except Exception as e:
         messagebox.showerror("Error", f"Failed to reject request(s):\n{e}")
 
-
-def open_barcode_file(path):
-    try:
-        if platform.system() == "Windows":
-            os.startfile(path)
-        elif platform.system() == "Darwin":  # macOS
-            subprocess.call(["open", path])
-        else:  # Linux
-            subprocess.call(["xdg-open", path])
-    except Exception as e:
-        messagebox.showerror("Error", f"Could not open barcode file:\n{e}")
 
 def approve_requests(db):
     global tree
@@ -326,21 +502,6 @@ def approve_requests(db):
         code128 = get_barcode("code128", barcode_content, writer=ImageWriter())
         saved_path = code128.save(barcode_path)
 
-        # Notify the user via email
-        try:
-            user_doc = db.collection("Users").document(user_id).get()
-            user_data = user_doc.to_dict()
-            if user_data and "Email" in user_data:
-                user_email = user_data["Email"]
-                send_email_with_attachment(
-                    receiver=user_email,
-                    subject="Your Request Has Been Approved",
-                    body=f"Hi {user_data.get('Username', '')},\n\nYour product submission (ID: {product_id}) has been approved.\n\nBest regards,\nAdmin",
-                    attachment_path=saved_path  # barcode image as attachment
-                )
-        except Exception as e:
-            print(f"Failed to send email to user {user_id}: {e}")
-
         open_barcode_file(saved_path)
         messagebox.showinfo("Success", "Selected request(s) approved")
 
@@ -348,160 +509,116 @@ def approve_requests(db):
         messagebox.showerror("Error", f"Approval failed:\n{e}")
 
 
-def manage_users(right_panel, db):
-    clear_right_panel(right_panel)
-    def refresh_users():
-        for item in tree.get_children():
-            tree.delete(item)
-        docs = db.collection("Users").stream()
-        for doc in docs:
-            data = doc.to_dict()
-            tree.insert("", "end", iid=doc.id, values=(
-                data.get("UserID", ""),
-                data.get("Username", ""),
-                data.get("Email", ""),
-                data.get("Password", "")
-            ))
+def open_barcode_file(saved_path):
+    if platform.system() == "Windows":
+        os.startfile(saved_path)
+    elif platform.system() == "Darwin":  # macOS
+        subprocess.run(["open", saved_path])
+    else:  # Linux
+        subprocess.run(["xdg-open", saved_path])
 
-    def add_user():
-        user_id = simpledialog.askstring("Input", "Enter User ID:")
-        username = simpledialog.askstring("Input", "Enter Username:")
-        email = simpledialog.askstring("Input", "Enter Email:")
-        password = simpledialog.askstring("Input", "Enter Password:")
-        if user_id and username and email and password:
-            db.collection("Users").document(user_id).set({
-                "UserID": user_id,
-                "Username": username,
-                "Email": email,
-                "Password": password
-            })
-            refresh_users()
-            messagebox.showinfo("Success", "User added successfully.")
 
-    def delete_user():
-        selected = tree.selection()
-        if not selected:
-            messagebox.showwarning("Warning", "Please select a user to delete.")
-            return
-        user_id = tree.item(selected[0])['values'][0]
-        db.collection("Users").document(user_id).delete()
-        refresh_users()
-        messagebox.showinfo("Deleted", f"User {user_id} deleted.")
-
-    def edit_user():
-        selected = tree.selection()
-        if not selected:
-            messagebox.showwarning("Warning", "Please select a user to edit.")
-            return
-
-        old_user_id = tree.item(selected[0])['values'][0]
-        current_values = tree.item(selected[0])['values']
-
-        new_user_id = simpledialog.askstring("Input", "Edit User ID:", initialvalue=old_user_id)
-        username = simpledialog.askstring("Input", "Edit Username:", initialvalue=current_values[1])
-        email = simpledialog.askstring("Input", "Edit Email:", initialvalue=current_values[2])
-        password = simpledialog.askstring("Input", "Edit Password:", initialvalue=current_values[3])
-
-        if new_user_id and username and email and password:
-            new_data = {
-                "UserID": new_user_id,
-                "Username": username,
-                "Email": email,
-                "Password": password
-            }
-
-            try:
-                if new_user_id != old_user_id:
-                    # Copy to new document
-                    db.collection("Users").document(new_user_id).set(new_data)
-                    # Delete old document
-                    db.collection("Users").document(old_user_id).delete()
-                else:
-                    # Just update existing document
-                    db.collection("Users").document(old_user_id).update(new_data)
-
-                refresh_users()
-                messagebox.showinfo("Updated", f"User {old_user_id} updated.")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to update user:\n{e}")
+def clear_right_panel(right_panel):
+    global tree, tree_frame
 
     for widget in right_panel.winfo_children():
-        widget.destroy()
+        try:
+            widget.destroy()
+        except tk.TclError:
+            pass
 
-    toolbar = tk.Frame(right_panel, bg="white")
-    toolbar.pack(fill="x", padx=8, pady=5)
-    ttk.Button(toolbar, text="Add User", command=add_user).pack(side="left", padx=5)
-    ttk.Button(toolbar, text="Delete User", command=delete_user).pack(side="left", padx=5)
-    ttk.Button(toolbar, text="Edit User", command=edit_user).pack(side="left", padx=5)
+    if tree:
+        try:
+            if tree.winfo_exists():
+                tree.destroy()
+        except tk.TclError:
+            pass
+        tree = None
 
-    columns = ("UserID", "Username", "Email", "Password")
-    tree = ttk.Treeview(right_panel, columns=columns, show="headings")
-    for col in columns:
-        tree.heading(col, text=col)
-        tree.column(col, width=150, anchor="center")
-    tree.pack(fill="both", expand=True, padx=10, pady=10)
-
-    refresh_users()
+    if tree_frame:
+        try:
+            if tree_frame.winfo_exists():
+                tree_frame.destroy()
+        except tk.TclError:
+            pass
+        tree_frame = None
 
 
 def create_pending_tree_view(right_panel):
     global tree, tree_frame
 
-    # Safely destroy existing tree_frame if it exists
-    if tree_frame is not None:
-        try:
-            tree_frame.destroy()
-        except tk.TclError:
-            pass  # Frame might have already been destroyed
-        tree_frame = None
-        tree = None
+    # tree view
+    if not tree_frame:
+        tree_frame = tk.Frame(right_panel, bg="white")
+        tree_frame.pack(expand=True, fill="both", padx=10, pady=10)
 
-    # Create a new tree_frame
-    tree_frame = tk.Frame(right_panel, bg="white")
-    tree_frame.pack(expand=True, fill="both", padx=10, pady=10)
+    if not tree:
+        tree = ttk.Treeview(tree_frame,
+                            columns=("Product ID", "Product Name", "Description", "Test Date", "Submitted At", "Product Owner"),
+                            show="headings")
+        tree.heading("Product ID", text="Product ID")
+        tree.heading("Product Name", text="Product Name")
+        tree.heading("Description", text="Description")
+        tree.heading("Test Date", text="Test Date")
+        tree.heading("Submitted At", text="Submitted At")
+        tree.heading("Product Owner", text="Product Owner")
+        tree.grid(row=0, column=0, sticky="nsew")
 
-    # Create new Treeview
-    tree = ttk.Treeview(tree_frame,
-                        columns=("Product ID", "Product Name", "Description", "Test Date", "Submitted At", "Product Owner"),
-                        show="headings")
+        scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        scrollbar_y.grid(row=0, column=1, sticky="ns")
 
-    tree.heading("Product ID", text="Product ID")
-    tree.heading("Product Name", text="Product Name")
-    tree.heading("Description", text="Description")
-    tree.heading("Test Date", text="Test Date")
-    tree.heading("Submitted At", text="Submitted At")
-    tree.heading("Product Owner", text="Product Owner")
+        scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+        scrollbar_x.grid(row=1, column=0, sticky="ew")
 
-    tree.grid(row=0, column=0, sticky="nsew")
-
-    # Add scrollbars
-    scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
-    scrollbar_y.grid(row=0, column=1, sticky="ns")
-
-    scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
-    scrollbar_x.grid(row=1, column=0, sticky="ew")
-
-    tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
-
-    # Configure resizing behavior
-    tree_frame.grid_rowconfigure(0, weight=1)
-    tree_frame.grid_columnconfigure(0, weight=1)
+        tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
 
 
 def view_pending_requests(right_panel, db):
     global top_bar
 
-    clear_right_panel(right_panel)  # ✅ Clear right panel first
+    clear_right_panel(right_panel)
 
-    top_bar = tk.Frame(right_panel, bg="white")
-    top_bar.pack(fill="x", padx=8, pady=5)
+    # top bar navigation
+    if top_bar is not None:
+        try:
+            if top_bar.winfo_exists():
+                top_bar.destroy()
+        except tk.TclError:
+            pass
+        top_bar = None
 
-    ttk.Button(top_bar, text="Approve", style="Bold.TButton", width=15,
-               command=lambda: approve_requests(db)).pack(side="right", padx=5)
-    ttk.Button(top_bar, text="Reject", style="Bold.TButton", width=15,
-               command=lambda: reject_requests(db)).pack(side="right", padx=5)
+    if top_bar is None:
+        # Top bar frame in right panel to hold buttons
+        top_bar = tk.Frame(right_panel, bg="white")
+        top_bar.pack(fill="x", padx=8, pady=5)
+
+        btn_add = ttk.Button(top_bar, text="Approve", style="Bold.TButton", width=15, command=lambda: approve_requests(db))
+        btn_add.pack(side="right", pady=(10, 0), padx=5)
+
+        btn_edit = ttk.Button(top_bar, text="Reject", style="Bold.TButton", width=15, command=lambda: reject_requests(db))
+        btn_edit.pack(side="right", pady=(10, 0), padx=5)
 
     create_pending_tree_view(right_panel)
+
+    try:
+        # Fetch all documents from the "Pending" collection
+        docs = db.collection("Pending").stream()
+
+        for doc in docs:
+            data = doc.to_dict()
+            tree.insert("", "end", values=(
+                data.get("Product_ID", ""),
+                data.get("Product_Name", ""),
+                data.get("Description", ""),
+                data.get("Test_Date", ""),
+                data.get("Submitted_At", "").strftime("%d-%m-%Y") if isinstance(data.get("Submitted_At"),
+                                                                                 datetime) else "",
+                data.get("UserID", "")
+            ))
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to load pending data:\n{e}")
 
 
 def logout(root):
@@ -525,10 +642,13 @@ def admin_panel(admin_data, db):
     style.theme_use("clam")
     style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=15)
     style.configure("Treeview.Heading", background="#d3d3d3", foreground="black", font=("Segoe UI", 10, "bold"))
+    style.configure("Custom.TLabel", background="White", foreground="#333333", font=("Segoe UI", 10, "bold"), padding=5)
 
     ttk.Button(left_panel, text="View Requests", style="Bold.TButton", command=lambda: view_pending_requests(right_panel, db)).pack(pady=5, padx=10)
     ttk.Button(left_panel, text="Send Reminders", style="Bold.TButton", command=lambda: export_and_send_reminders(db)).pack(pady=5, padx=10)
-    ttk.Button(left_panel, text="Manage Users", style="Bold.TButton", command=lambda: manage_users(right_panel, db)).pack(pady=5, padx=10)
+    ttk.Button(left_panel, text="All Barcode", style="Bold.TButton", command=lambda: load_barcode(right_panel)).pack(pady=5, padx=10)
+    ttk.Button(left_panel, text="Manage Users", style="Bold.TButton", command=lambda: display_all_users(right_panel, db)).pack(pady=5, padx=10)
+
     ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
 
     root.mainloop()
