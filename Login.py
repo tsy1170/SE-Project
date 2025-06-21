@@ -2,11 +2,9 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import tkinter as tk
 from tkinter import messagebox, ttk
-
-from pandas import wide_to_long
-
 import user_page
 import admin_page
+import tester_page
 
 # ----------------- Firestore Setup -----------------
 cred = credentials.Certificate("se-project-ad0dd-firebase-adminsdk-fbsvc-beb7183669.json")
@@ -49,7 +47,20 @@ def login(root, entry_ID, entry_password):
             messagebox.showerror("Login Failed", "Incorrect password.")
         return
 
-    messagebox.showerror("Login Failed", "UserID not found in Users or Admin collections.")
+    # Check Tester collection
+    tester_ref = db.collection("Tester").document(ID)
+    tester_doc = tester_ref.get()
+
+    if tester_doc.exists:
+        tester_data = tester_doc.to_dict()
+        if password == tester_data.get("Password"):
+            root.destroy()
+            tester_page.tester_panel(tester_data, db)
+        else:
+            messagebox.showerror("Login Failed", "Incorrect password.")
+        return
+
+    messagebox.showerror("Login Failed", "ID not found.")
 
 def show_login():
     root = tk.Tk()
