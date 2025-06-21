@@ -32,8 +32,8 @@ def tester_panel(tester_data, db):
     style.configure("Treeview.Heading", background="#d3d3d3", foreground="black", font=("Segoe UI", 10, "bold"))
 
     # Add buttons to left panel
-    btn1 = ttk.Button(left_panel, text="Load File", style="Bold.TButton")
-    btn1.pack(pady=(10,3), padx=8, fill="x")
+    btn_load_file = ttk.Button(left_panel, text="Load File", style="Bold.TButton")
+    btn_load_file.pack(pady=(10,3), padx=8, fill="x")
 
     ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
 
