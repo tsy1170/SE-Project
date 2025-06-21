@@ -20,11 +20,8 @@ tree_frame = None
 top_bar = None
 
 def clear_right_panel(panel):
-    global tree, tree_frame
     for widget in panel.winfo_children():
         widget.destroy()
-    tree = None
-    tree_frame = None
 
 def load_barcode(right_panel):
     global tree, tree_frame
@@ -352,6 +349,7 @@ def approve_requests(db):
 
 
 def manage_users(right_panel, db):
+    clear_right_panel(right_panel)
     def refresh_users():
         for item in tree.get_children():
             tree.delete(item)
@@ -449,80 +447,61 @@ def manage_users(right_panel, db):
 def create_pending_tree_view(right_panel):
     global tree, tree_frame
 
-    # tree view
-    if not tree_frame:
-        tree_frame = tk.Frame(right_panel, bg="white")
-        tree_frame.pack(expand=True, fill="both", padx=10, pady=10)
+    # Safely destroy existing tree_frame if it exists
+    if tree_frame is not None:
+        try:
+            tree_frame.destroy()
+        except tk.TclError:
+            pass  # Frame might have already been destroyed
+        tree_frame = None
+        tree = None
 
-    if not tree:
-        tree = ttk.Treeview(tree_frame,
-                            columns=("Product ID", "Product Name", "Description", "Test Date", "Submitted At", "Product Owner"),
-                            show="headings")
-        tree.heading("Product ID", text="Product ID")
-        tree.heading("Product Name", text="Product Name")
-        tree.heading("Description", text="Description")
-        tree.heading("Test Date", text="Test Date")
-        tree.heading("Submitted At", text="Submitted At")
-        tree.heading("Product Owner", text="Product Owner")
-        tree.grid(row=0, column=0, sticky="nsew")
+    # Create a new tree_frame
+    tree_frame = tk.Frame(right_panel, bg="white")
+    tree_frame.pack(expand=True, fill="both", padx=10, pady=10)
 
-        scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
-        scrollbar_y.grid(row=0, column=1, sticky="ns")
+    # Create new Treeview
+    tree = ttk.Treeview(tree_frame,
+                        columns=("Product ID", "Product Name", "Description", "Test Date", "Submitted At", "Product Owner"),
+                        show="headings")
 
-        scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
-        scrollbar_x.grid(row=1, column=0, sticky="ew")
+    tree.heading("Product ID", text="Product ID")
+    tree.heading("Product Name", text="Product Name")
+    tree.heading("Description", text="Description")
+    tree.heading("Test Date", text="Test Date")
+    tree.heading("Submitted At", text="Submitted At")
+    tree.heading("Product Owner", text="Product Owner")
 
-        tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
-        tree_frame.grid_rowconfigure(0, weight=1)
-        tree_frame.grid_columnconfigure(0, weight=1)
+    tree.grid(row=0, column=0, sticky="nsew")
+
+    # Add scrollbars
+    scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+    scrollbar_y.grid(row=0, column=1, sticky="ns")
+
+    scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+    scrollbar_x.grid(row=1, column=0, sticky="ew")
+
+    tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+
+    # Configure resizing behavior
+    tree_frame.grid_rowconfigure(0, weight=1)
+    tree_frame.grid_columnconfigure(0, weight=1)
 
 
 def view_pending_requests(right_panel, db):
     global top_bar
 
-    def clear_right_panel(panel):
-        for widget in panel.winfo_children():
-            widget.destroy()
+    clear_right_panel(right_panel)  # ✅ Clear right panel first
 
-    # top bar navigation
-    if top_bar is not None:
-        try:
-            if top_bar.winfo_exists():
-                top_bar.destroy()
-        except tk.TclError:
-            pass
-        top_bar = None
+    top_bar = tk.Frame(right_panel, bg="white")
+    top_bar.pack(fill="x", padx=8, pady=5)
 
-    if top_bar is None:
-        # Top bar frame in right panel to hold buttons
-        top_bar = tk.Frame(right_panel, bg="white")
-        top_bar.pack(fill="x", padx=8, pady=5)
-
-        btn_add = ttk.Button(top_bar, text="Approve", style="Bold.TButton", width=15, command=lambda: approve_requests(db))
-        btn_add.pack(side="right", pady=(10, 0), padx=5)
-
-        btn_edit = ttk.Button(top_bar, text="Reject", style="Bold.TButton", width=15, command=lambda: reject_requests(db))
-        btn_edit.pack(side="right", pady=(10, 0), padx=5)
+    ttk.Button(top_bar, text="Approve", style="Bold.TButton", width=15,
+               command=lambda: approve_requests(db)).pack(side="right", padx=5)
+    ttk.Button(top_bar, text="Reject", style="Bold.TButton", width=15,
+               command=lambda: reject_requests(db)).pack(side="right", padx=5)
 
     create_pending_tree_view(right_panel)
-
-    try:
-        # Fetch all documents from the "Pending" collection
-        docs = db.collection("Pending").stream()
-
-        for doc in docs:
-            data = doc.to_dict()
-            tree.insert("", "end", values=(
-                data.get("Product_ID", ""),
-                data.get("Product_Name", ""),
-                data.get("Description", ""),
-                data.get("Test_Date", ""),
-                data.get("Submitted_At", "").strftime("%d-%m-%Y") if isinstance(data.get("Submitted_At"),
-                                                                                 datetime) else "",
-                data.get("UserID", "")
-            ))
-    except Exception as e:
-        messagebox.showerror("Error", f"Failed to load pending data:\n{e}")
 
 
 def logout(root):
