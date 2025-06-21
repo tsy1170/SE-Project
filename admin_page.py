@@ -83,6 +83,10 @@ def load_barcode(right_panel):
 
 
 def export_and_send_reminders(db):
+    confirm = messagebox.askyesno("Send Reminders", "Are you sure you want to send reminders to users and testers?")
+    if not confirm:
+        return
+
     today = datetime.today()
     two_months_after = today + timedelta(days=60)
     date_pattern = re.compile(r"\d{2}-\d{2}-\d{4}")
@@ -369,7 +373,7 @@ def view_pending_requests(right_panel, db):
             if top_bar.winfo_exists():
                 top_bar.destroy()
         except tk.TclError:
-            pass  # The widget is already invalid or belongs to an old root
+            pass  
         top_bar = None
 
     if top_bar is None:
@@ -411,7 +415,6 @@ def logout(root):
     Login.show_login()
 
 def admin_panel(admin_data, db):
-    # Tkinter app setup
     root = tk.Tk()
     root.title(f"Welcome, {admin_data.get("AdminID")}")
     root.geometry("1000x650")
