@@ -1,75 +1,91 @@
-import tkinter as tk
-from tkinter import messagebox
 import firebase_admin
 from firebase_admin import credentials, firestore
-
-import admin_page
+import tkinter as tk
+from tkinter import messagebox, ttk
 import user_page
+import admin_page
 import tester_page
 
 # ----------------- Firestore Setup -----------------
-cred = credentials.Certificate("se-project-ad0dd-firebase-adminsdk-fbsvc-fcfd17746c.json")  # your Firebase JSON
+cred = credentials.Certificate("se-project-ad0dd-firebase-adminsdk-fbsvc-beb7183669.json")
 if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-# ----------------- Login Logic -----------------
+
 def login(root, entry_ID, entry_password):
     ID = entry_ID.get()
     password = entry_password.get()
 
     if not ID or not password:
-        messagebox.showerror("Error", "Please enter both ID and password.")
+        messagebox.showwarning("Input Error", "Please enter both UserID and Password.")
         return
 
-    try:
-        # First, check Admin
-        admin_doc = db.collection("Admin").document(ID).get()
-        if admin_doc.exists and admin_doc.to_dict()["Password"] == password:
+    # Check Users collection first
+    user_ref = db.collection("Users").document(ID)
+    user_doc = user_ref.get()
+
+    if user_doc.exists:
+        user_data = user_doc.to_dict()
+        if password == user_data.get("Password"):
             root.destroy()
-            admin_page.admin_panel(admin_doc.to_dict(), db)
-            return
+            user_page.user_panel(user_data, db)
+        else:
+            messagebox.showerror("Login Failed", "Incorrect password.")
+        return
 
-        # Then check Users
-        user_doc = db.collection("Users").document(ID).get()
-        if user_doc.exists and user_doc.to_dict()["Password"] == password:
+    # Check Admin collection
+    admin_ref = db.collection("Admin").document(ID)
+    admin_doc = admin_ref.get()
+
+    if admin_doc.exists:
+        admin_data = admin_doc.to_dict()
+        if password == admin_data.get("Password"):
             root.destroy()
-            user_page.user_panel(user_doc.to_dict(), db)
-            return
+            admin_page.admin_panel(admin_data, db)
+        else:
+            messagebox.showerror("Login Failed", "Incorrect password.")
+        return
 
-        # Then check Tester
-        tester_doc = db.collection("Tester").document(ID).get()
-        if tester_doc.exists and tester_doc.to_dict()["Password"] == password:
+    # Check Tester collection
+    tester_ref = db.collection("Tester").document(ID)
+    tester_doc = tester_ref.get()
+
+    if tester_doc.exists:
+        tester_data = tester_doc.to_dict()
+        if password == tester_data.get("Password"):
             root.destroy()
-            tester_page.tester_panel(tester_doc.to_dict(), db)
-            return
+            tester_page.tester_panel(tester_data, db)
+        else:
+            messagebox.showerror("Login Failed", "Incorrect password.")
+        return
 
-        # If not found in any
-        messagebox.showerror("Login Failed", "Invalid ID or password.")
+    messagebox.showerror("Login Failed", "ID not found.")
 
-    except Exception as e:
-        messagebox.showerror("Error", f"An error occurred:\n{e}")
-
-
-# ----------------- Login GUI -----------------
 def show_login():
     root = tk.Tk()
+    root.configure(bg="White")
     root.title("Login")
-    root.geometry("300x200")
+    root.geometry("320x220")
 
-    tk.Label(root, text="ID:").pack(pady=5)
-    entry_ID = tk.Entry(root)
+    style = ttk.Style()
+    style.theme_use("clam")
+    style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=10, border=15)
+    style.configure("Custom.TLabel", background="White", foreground="#333333", font=("Segoe UI", 10, "bold"), padding=5)
+    style.configure("Custom.TEntry", foreground="black", fieldbackground="lightyellow", font=("Segoe UI", 10))
+
+    ttk.Label(root, text="Enter ID:", style="Custom.TLabel").pack()
+    entry_ID = ttk.Entry(root, style="Custom.TEntry", width=30)
     entry_ID.pack(pady=5)
 
-    tk.Label(root, text="Password:").pack(pady=5)
-    entry_password = tk.Entry(root, show="*")
+    ttk.Label(root, text="Enter password:", style="Custom.TLabel").pack()
+    entry_password = ttk.Entry(root, show="*", style="Custom.TEntry", width=30)
     entry_password.pack(pady=5)
 
-    tk.Button(root, text="Login", width=10,
-              command=lambda: login(root, entry_ID, entry_password)).pack(pady=20)
+    ttk.Button(root, text="Login", style="Bold.TButton", command=lambda: login(root, entry_ID, entry_password)).pack(pady=15)
 
     root.mainloop()
 
-# Run on file start
+
 if __name__ == "__main__":
     show_login()
