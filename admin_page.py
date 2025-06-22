@@ -620,7 +620,6 @@ def view_pending_requests(right_panel, db):
     except Exception as e:
         messagebox.showerror("Error", f"Failed to load pending data:\n{e}")
 
-
 def logout(root):
     global top_bar
     top_bar = None
