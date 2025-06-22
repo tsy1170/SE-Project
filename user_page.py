@@ -229,12 +229,13 @@ def edit_selected_data(root, db):
     form.configure(bg="White")
     form.title("Edit Product")
     form.geometry("450x350")
+    form.grab_set()
     entries = {}
 
     for i, col in enumerate(df.columns):
         ttk.Label(form, text=col+":", style="Custom.TLabel").grid(row=i, column=0, sticky="e", pady=5, padx=(37, 10))
 
-        if col == "Product_ID" or col == "Submitted_At":
+        if col == "Product_ID" or col == "Submitted_At" or col == "Test_Start_Date" or col == "Test_End_Date":
             entry = ttk.Entry(form, width=30, font=("Arial", 9))
             entry.insert(0, row_values[i])
             entry.configure(state="disabled")  # Make it read-only
@@ -327,6 +328,7 @@ def edit_pending_items(root, db):
     form.configure(bg="White")
     form.title("Edit Item")
     form.geometry("420x270")
+    form.grab_set()
 
     ttk.Label(form, text="Product ID:", style="Custom.TLabel").grid(row=0, column=0, sticky="e", pady=5, padx=(24, 10))
     entry_id = ttk.Entry(form, width=30, font=("Arial", 9))
@@ -433,6 +435,7 @@ def add_items_to_pending(right_panel, root, db, user_data):
     form.configure(bg="White")
     form.title("Add new Batch")
     form.geometry("420x270")
+    form.grab_set()
 
     ttk.Label(form, text="Product ID:", style="Custom.TLabel").grid(row=1, column=0, sticky="e", pady=5, padx=(24, 10))
     entry_id = ttk.Entry(form, width=30, font=("Arial", 9))
