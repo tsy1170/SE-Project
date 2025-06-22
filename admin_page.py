@@ -36,6 +36,7 @@ def edit_user(right_panel, db):
     form.configure(bg="White")
     form.title(f"Edit User: {user_id}")
     form.geometry("350x300")
+    form.grab_set()
 
     labels = ["User ID", "Username", "Email", "Password"]
     entries = {}
@@ -118,6 +119,7 @@ def add_user(right_panel, db):
     form.configure(bg="White")
     form.title("Add New User")
     form.geometry("350x300")
+    form.grab_set()
 
     # Labels and Entries
     labels = ["User ID", "Username", "Email", "Password"]
@@ -384,7 +386,6 @@ def export_and_send_reminders(db):
 
 
 def send_email_with_attachment(receiver, subject, body, attachment_path):
-    # Replace these with your email credentials
     sender_email = "tsy1170@gmail.com"
     app_password = "khvvzmuhytpinkxe"
 
@@ -620,6 +621,7 @@ def view_pending_requests(right_panel, db):
     except Exception as e:
         messagebox.showerror("Error", f"Failed to load pending data:\n{e}")
 
+
 def logout(root):
     global top_bar
     top_bar = None
@@ -651,3 +653,4 @@ def admin_panel(admin_data, db):
     ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
 
     root.mainloop()
+
