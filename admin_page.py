@@ -131,6 +131,7 @@ def add_user(right_panel, db):
         entry.grid(row=i, column=1, padx=10, pady=10)
         entries[label] = entry
 
+
     def submit_user():
         user_id = entries["User ID"].get().strip()
         username = entries["Username"].get().strip()
@@ -185,13 +186,22 @@ def display_all_users(right_panel, db):
         top_bar = tk.Frame(right_panel, bg="white")
         top_bar.pack(fill="x", padx=8, pady=5)
 
-        btn_add_user = ttk.Button(top_bar, text="Add User", style="Bold.TButton", width=15, command=lambda: add_user(right_panel, db))
+        btn_add_user = ttk.Button(
+            top_bar, text="Add User", style="Green.TButton", width=15,
+            command=lambda: add_user(right_panel, db)
+        )
         btn_add_user.pack(side="right", pady=(10, 0), padx=5)
 
-        btn_delete_user = ttk.Button(top_bar, text="Delete User", style="Bold.TButton", width=15, command=lambda: delete_user(right_panel, db))
+        btn_delete_user = ttk.Button(
+            top_bar, text="Delete User", style="Red.TButton", width=15,
+            command=lambda: delete_user(right_panel, db)
+        )
         btn_delete_user.pack(side="right", pady=(10, 0), padx=5)
 
-        btn_edit_user = ttk.Button(top_bar, text="Edit User", style="Bold.TButton", width=15, command=lambda: edit_user(right_panel, db))
+        btn_edit_user = ttk.Button(
+            top_bar, text="Edit User", style="Bold.TButton", width=15,
+            command=lambda: edit_user(right_panel, db)
+        )
         btn_edit_user.pack(side="right", pady=(10, 0), padx=5)
 
     # Create Treeview
@@ -595,11 +605,13 @@ def view_pending_requests(right_panel, db):
         top_bar = tk.Frame(right_panel, bg="white")
         top_bar.pack(fill="x", padx=8, pady=5)
 
-        btn_add = ttk.Button(top_bar, text="Approve", style="Bold.TButton", width=15, command=lambda: approve_requests(db))
-        btn_add.pack(side="right", pady=(10, 0), padx=5)
+        # ✅ Green Approve button
+        btn_approve = ttk.Button(top_bar, text="Approve", style="Green.TButton", width=15, command=lambda: approve_requests(db))
+        btn_approve.pack(side="right", pady=(10, 0), padx=5)
 
-        btn_edit = ttk.Button(top_bar, text="Reject", style="Bold.TButton", width=15, command=lambda: reject_requests(db))
-        btn_edit.pack(side="right", pady=(10, 0), padx=5)
+        # ❌ Red Reject button
+        btn_reject = ttk.Button(top_bar, text="Reject", style="Red.TButton", width=15, command=lambda: reject_requests(db))
+        btn_reject.pack(side="right", pady=(10, 0), padx=5)
 
     create_pending_tree_view(right_panel)
 
@@ -614,13 +626,11 @@ def view_pending_requests(right_panel, db):
                 data.get("Product_Name", ""),
                 data.get("Description", ""),
                 data.get("Test_Date", ""),
-                data.get("Submitted_At", "").strftime("%d-%m-%Y") if isinstance(data.get("Submitted_At"),
-                                                                                 datetime) else "",
+                data.get("Submitted_At", "").strftime("%d-%m-%Y") if isinstance(data.get("Submitted_At"), datetime) else "",
                 data.get("UserID", "")
             ))
     except Exception as e:
         messagebox.showerror("Error", f"Failed to load pending data:\n{e}")
-
 
 def logout(root):
     global top_bar
@@ -629,8 +639,15 @@ def logout(root):
     Login.show_login()
 
 def admin_panel(admin_data, db):
+    def set_active_button(active_btn):
+        nonlocal active_button
+        for btn in sidebar_buttons:
+            btn.configure(style="Bold.TButton")
+        active_btn.configure(style="Active.TButton")
+        active_button = active_btn
+
     root = tk.Tk()
-    root.title(f"Welcome, {admin_data.get("AdminID")}")
+    root.title(f"Welcome, {admin_data.get('AdminID')}")
     root.geometry("1000x650")
 
     left_panel = tk.Frame(root, bg="lightgray", width=180)
@@ -639,18 +656,55 @@ def admin_panel(admin_data, db):
     right_panel = tk.Frame(root, bg="white")
     right_panel.pack(side="right", expand=True, fill="both")
 
+    # Styling
     style = ttk.Style()
     style.theme_use("clam")
+
+    # Base button
     style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=15)
     style.configure("Treeview.Heading", background="#d3d3d3", foreground="black", font=("Segoe UI", 10, "bold"))
     style.configure("Custom.TLabel", background="White", foreground="#333333", font=("Segoe UI", 10, "bold"), padding=5)
 
-    ttk.Button(left_panel, text="View Requests", style="Bold.TButton", command=lambda: view_pending_requests(right_panel, db)).pack(pady=5, padx=10)
-    ttk.Button(left_panel, text="Send Reminders", style="Bold.TButton", command=lambda: export_and_send_reminders(db)).pack(pady=5, padx=10)
-    ttk.Button(left_panel, text="All Barcode", style="Bold.TButton", command=lambda: load_barcode(right_panel)).pack(pady=5, padx=10)
-    ttk.Button(left_panel, text="Manage Users", style="Bold.TButton", command=lambda: display_all_users(right_panel, db)).pack(pady=5, padx=10)
+    # Active left panel button
+    style.configure("Active.TButton", font=("Segoe UI", 10, "bold"), background="#4CAF50", foreground="white")
+    style.map("Active.TButton", background=[("active", "#45a049")])
 
-    ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
+    # Red delete button
+    style.configure("Red.TButton", background="#f44336", foreground="white")
+    style.map("Red.TButton", background=[("active", "#d32f2f")])
+
+    # Green add button
+    style.configure("Green.TButton", background="#4CAF50", foreground="white")
+    style.map("Green.TButton", background=[("active", "#45a049")])
+
+    # Sidebar buttons with tracking
+    sidebar_buttons = []
+
+    btn_view = ttk.Button(left_panel, text="View Requests", style="Bold.TButton",
+                          command=lambda: [set_active_button(btn_view), view_pending_requests(right_panel, db)])
+    btn_view.pack(pady=5, padx=10)
+    sidebar_buttons.append(btn_view)
+
+    btn_reminders = ttk.Button(left_panel, text="Send Reminders", style="Bold.TButton",
+                               command=lambda: [set_active_button(btn_reminders), export_and_send_reminders(db)])
+    btn_reminders.pack(pady=5, padx=10)
+    sidebar_buttons.append(btn_reminders)
+
+    btn_barcode = ttk.Button(left_panel, text="All Barcode", style="Bold.TButton",
+                             command=lambda: [set_active_button(btn_barcode), load_barcode(right_panel)])
+    btn_barcode.pack(pady=5, padx=10)
+    sidebar_buttons.append(btn_barcode)
+
+    btn_manage = ttk.Button(left_panel, text="Manage Users", style="Bold.TButton",
+                            command=lambda: [set_active_button(btn_manage), display_all_users(right_panel, db)])
+    btn_manage.pack(pady=5, padx=10)
+    sidebar_buttons.append(btn_manage)
+
+    # Logout button
+    ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(
+        pady=20, padx=10, side="bottom")
+
+    # Track active button
+    active_button = None
 
     root.mainloop()
-
