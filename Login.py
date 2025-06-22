@@ -1,465 +1,91 @@
+import firebase_admin
+from firebase_admin import credentials, firestore
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-from datetime import datetime
-from tkcalendar import DateEntry
-import pandas as pd
-import Login
+from tkinter import messagebox, ttk
+import user_page
+import admin_page
+import tester_page
 
-tree = None
-tree_frame = None
-top_bar = None
-
-def send_email_notification(recipient_email, product_id, start_date, end_date):
-    sender_email = "tsy1170@gmail.com"  # replace with your email
-    sender_password = "khvvzmuhytpinkxe"  # use app password if 2FA enabled
-
-    subject = f"Test Date Update for Product ID: {product_id}"
-    body = f"""
-    Hello,
-
-    The testing dates for Product ID {product_id} have been updated:
-
-    Test Start Date: {start_date}
-    Test End Date: {end_date}
-
-    Regards,
-    QA Team
-    """
-    msg = MIMEMultipart()
-    msg['From'] = sender_email
-    msg['To'] = recipient_email
-    msg['Subject'] = subject
-
-    msg.attach(MIMEText(body, 'plain'))
-
-    with smtplib.SMTP('smtp.gmail.com', 587) as server:
-        server.starttls()
-        server.login(sender_email, sender_password)
-        server.send_message(msg)
+# ----------------- Firestore Setup -----------------
+cred = credentials.Certificate("se-project-ad0dd-firebase-adminsdk-fbsvc-40f9620543.json")
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred)
+db = firestore.client()
 
 
-def send_email_notification_from_firestore(db, username, product_id, start_date, end_date):
-    try:
-        user_doc = db.collection("Users").document(username).get()
-        if user_doc.exists:
-            email = user_doc.to_dict().get("Email")
-            if email:
-                send_email_notification(email, product_id, start_date, end_date)
-    except Exception as e:
-        print(f"Error sending email notification: {e}")
+def login(root, entry_ID, entry_password):
+    ID = entry_ID.get()
+    password = entry_password.get()
 
-
-def clear_right_panel(right_panel):
-    global tree, tree_frame
-
-    for widget in right_panel.winfo_children():
-        try:
-            widget.destroy()
-        except tk.TclError:
-            pass
-
-    if tree:
-        try:
-            if tree.winfo_exists():
-                tree.destroy()
-        except tk.TclError:
-            pass
-        tree = None
-
-    if tree_frame:
-        try:
-            if tree_frame.winfo_exists():
-                tree_frame.destroy()
-        except tk.TclError:
-            pass
-        tree_frame = None
-
-
-def enter_test_end_date(db, excel_file_path):
-    global tree
-
-    selected = tree.selection()
-    if not selected:
-        messagebox.showwarning("No Selection", "Please select a row.")
+    if not ID or not password:
+        messagebox.showwarning("Input Error", "Please enter both UserID and Password.")
         return
 
-    item = selected[0]
-    row_values = tree.item(item, "values")
-    columns = tree["columns"]
+    # Check Users collection first
+    user_ref = db.collection("Users").document(ID)
+    user_doc = user_ref.get()
 
-    def submit_date():
-        test_end_date = cal.get_date().strftime("%d-%m-%Y")
-
-        updated_values = list(row_values)
-        start_idx = columns.index("Test_End_Date")
-        updated_values[start_idx] = test_end_date
-        tree.item(item, values=updated_values)
-
-        try:
-            df = pd.read_excel(excel_file_path, engine="openpyxl")
-            product_id = updated_values[columns.index("Product_ID")]
-            df.loc[df["Product_ID"].astype(str) == str(product_id), "Test_End_Date"] = test_end_date
-            df.to_excel(excel_file_path, index=False)
-        except Exception as e:
-            messagebox.showerror("Excel Error", f"Failed to update Excel:\n{e}")
-            date_win.destroy()
-            return
-
-        try:
-            submitted_at = updated_values[columns.index("Submitted_At")]
-            doc_ref = db.collection(submitted_at).document(str(product_id))
-            doc_ref.update({"Test_End_Date": test_end_date})
-        except Exception as e:
-            messagebox.showerror("Firestore Error", f"Failed to update Firestore:\n{e}")
+    if user_doc.exists:
+        user_data = user_doc.to_dict()
+        if password == user_data.get("Password"):
+            root.destroy()
+            user_page.user_panel(user_data, db)
         else:
-            messagebox.showinfo("Success", "Test End Date updated successfully.")
-
-        try:
-            username = updated_values[columns.index("Username")]
-            test_start_date = updated_values[columns.index("Test_Start_Date")]
-            send_email_notification_from_firestore(db, username, product_id, test_start_date, test_end_date)
-        except Exception as e:
-            print(f"Notification error: {e}")
-
-        date_win.destroy()
-
-    date_win = tk.Toplevel()
-    date_win.configure(bg="White")
-    date_win.title("Select Test End Date")
-    date_win.geometry("250x120")
-    date_win.grab_set()
-
-    ttk.Label(date_win, text="Select Test End Date:").pack(pady=(10, 5))
-    cal = DateEntry(date_win, date_pattern="dd-mm-yyyy")
-    cal.pack(pady=5)
-
-    ttk.Button(date_win, text="Submit", command=submit_date).pack(pady=10)
-
-
-def enter_test_start_date(db, excel_file_path):
-    global tree
-
-    selected = tree.selection()
-    if not selected:
-        messagebox.showwarning("No Selection", "Please select a row.")
+            messagebox.showerror("Login Failed", "Incorrect password.")
         return
 
-    item = selected[0]
-    row_values = tree.item(item, "values")
-    columns = tree["columns"]
+    # Check Admin collection
+    admin_ref = db.collection("Admin").document(ID)
+    admin_doc = admin_ref.get()
 
-    def submit_date():
-        test_start_date = cal.get_date().strftime("%d-%m-%Y")
-
-        updated_values = list(row_values)
-        start_idx = columns.index("Test_Start_Date")
-        updated_values[start_idx] = test_start_date
-        tree.item(item, values=updated_values)
-
-        try:
-            df = pd.read_excel(excel_file_path, engine="openpyxl")
-            product_id = updated_values[columns.index("Product_ID")]
-            df.loc[df["Product_ID"].astype(str) == str(product_id), "Test_Start_Date"] = test_start_date
-            df.to_excel(excel_file_path, index=False)
-        except Exception as e:
-            messagebox.showerror("Excel Error", f"Failed to update Excel:\n{e}")
-            date_win.destroy()
-            return
-
-        try:
-            submitted_at = updated_values[columns.index("Submitted_At")]
-            doc_ref = db.collection(submitted_at).document(str(product_id))
-            doc_ref.update({"Test_Start_Date": test_start_date})
-        except Exception as e:
-            messagebox.showerror("Firestore Error", f"Failed to update Firestore:\n{e}")
+    if admin_doc.exists:
+        admin_data = admin_doc.to_dict()
+        if password == admin_data.get("Password"):
+            root.destroy()
+            admin_page.admin_panel(admin_data, db)
         else:
-            messagebox.showinfo("Success", "Test Start Date updated successfully.")
-
-        try:
-            username = updated_values[columns.index("Username")]
-            test_end_date = updated_values[columns.index("Test_End_Date")]
-            send_email_notification_from_firestore(db, username, product_id, test_start_date, test_end_date)
-        except Exception as e:
-            print(f"Notification error: {e}")
-
-        date_win.destroy()
-
-    date_win = tk.Toplevel()
-    date_win.configure(bg="White")
-    date_win.title("Select Test Start Date")
-    date_win.geometry("250x120")
-    date_win.grab_set()
-
-    ttk.Label(date_win, text="Select Test Start Date:").pack(pady=(10, 5))
-    cal = DateEntry(date_win, date_pattern="dd-mm-yyyy")
-    cal.pack(pady=5)
-
-    ttk.Button(date_win, text="Submit", command=submit_date).pack(pady=10)
-
-def clear_right_panel(right_panel):
-    global tree, tree_frame
-
-    for widget in right_panel.winfo_children():
-        try:
-            widget.destroy()
-        except tk.TclError:
-            pass
-
-    if tree:
-        try:
-            if tree.winfo_exists():
-                tree.destroy()
-        except tk.TclError:
-            pass
-        tree = None
-
-    if tree_frame:
-        try:
-            if tree_frame.winfo_exists():
-                tree_frame.destroy()
-        except tk.TclError:
-            pass
-        tree_frame = None
-
-
-def enter_test_end_date(db, excel_file_path):
-    global tree
-
-    selected = tree.selection()
-    if not selected:
-        messagebox.showwarning("No Selection", "Please select a row.")
+            messagebox.showerror("Login Failed", "Incorrect password.")
         return
 
-    item = selected[0]
-    row_values = tree.item(item, "values")
-    columns = tree["columns"]
+    # Check Tester collection
+    tester_ref = db.collection("Tester").document(ID)
+    tester_doc = tester_ref.get()
 
-    def submit_date():
-        test_end_date = cal.get_date().strftime("%d-%m-%Y")
-
-        # Update Treeview
-        updated_values = list(row_values)
-        start_idx = columns.index("Test_End_Date")
-        updated_values[start_idx] = test_end_date
-        tree.item(item, values=updated_values)
-
-        # Update Excel
-        try:
-            df = pd.read_excel(excel_file_path, engine="openpyxl")
-            product_id = updated_values[columns.index("Product_ID")]
-            df.loc[df["Product_ID"].astype(str) == str(product_id), "Test_End_Date"] = test_end_date
-            df.to_excel(excel_file_path, index=False)
-        except Exception as e:
-            messagebox.showerror("Excel Error", f"Failed to update Excel:\n{e}")
-            date_win.destroy()
-            return
-
-        # Update Firestore
-        try:
-            submitted_at = updated_values[columns.index("Submitted_At")]
-            doc_ref = db.collection(submitted_at).document(str(product_id))
-            doc_ref.update({"Test_End_Date": test_end_date})
-        except Exception as e:
-            messagebox.showerror("Firestore Error", f"Failed to update Firestore:\n{e}")
+    if tester_doc.exists:
+        tester_data = tester_doc.to_dict()
+        if password == tester_data.get("Password"):
+            root.destroy()
+            tester_page.tester_panel(tester_data, db)
         else:
-            messagebox.showinfo("Success", "Test Start Date updated successfully.")
-        date_win.destroy()
-
-    # Popup date picker window
-    date_win = tk.Toplevel()
-    date_win.configure(bg="White")
-    date_win.title("Select Test End Date")
-    date_win.geometry("250x120")
-    date_win.grab_set()
-
-    ttk.Label(date_win, text="Select Test End Date:").pack(pady=(10, 5))
-    cal = DateEntry(date_win, date_pattern="dd-mm-yyyy")
-    cal.pack(pady=5)
-
-    ttk.Button(date_win, text="Submit", command=submit_date).pack(pady=10)
-
-
-def enter_test_start_date(db, excel_file_path):
-    global tree
-
-    selected = tree.selection()
-    if not selected:
-        messagebox.showwarning("No Selection", "Please select a row.")
+            messagebox.showerror("Login Failed", "Incorrect password.")
         return
 
-    item = selected[0]
-    row_values = tree.item(item, "values")
-    columns = tree["columns"]
+    messagebox.showerror("Login Failed", "ID not found.")
 
-    def submit_date():
-        test_start_date = cal.get_date().strftime("%d-%m-%Y")
-
-        # Update Treeview
-        updated_values = list(row_values)
-        start_idx = columns.index("Test_Start_Date")
-        updated_values[start_idx] = test_start_date
-        tree.item(item, values=updated_values)
-
-        # Update Excel
-        try:
-            df = pd.read_excel(excel_file_path, engine="openpyxl")
-            product_id = updated_values[columns.index("Product_ID")]
-            df.loc[df["Product_ID"].astype(str) == str(product_id), "Test_Start_Date"] = test_start_date
-            df.to_excel(excel_file_path, index=False)
-        except Exception as e:
-            messagebox.showerror("Excel Error", f"Failed to update Excel:\n{e}")
-            date_win.destroy()
-            return
-
-        # Update Firestore
-        try:
-            submitted_at = updated_values[columns.index("Submitted_At")]
-            doc_ref = db.collection(submitted_at).document(str(product_id))
-            doc_ref.update({"Test_Start_Date": test_start_date})
-        except Exception as e:
-            messagebox.showerror("Firestore Error", f"Failed to update Firestore:\n{e}")
-        else:
-            messagebox.showinfo("Success", "Test Start Date updated successfully.")
-        date_win.destroy()
-
-    # Popup date picker window
-    date_win = tk.Toplevel()
-    date_win.configure(bg="White")
-    date_win.title("Select Test Start Date")
-    date_win.geometry("250x120")
-    date_win.grab_set()
-
-    ttk.Label(date_win, text="Select Test Start Date:").pack(pady=(10, 5))
-    cal = DateEntry(date_win, date_pattern="dd-mm-yyyy")
-    cal.pack(pady=5)
-
-    ttk.Button(date_win, text="Submit", command=submit_date).pack(pady=10)
-
-
-def load_file(right_panel, db):
-    global tree, tree_frame, top_bar
-
-    file_path = filedialog.askopenfilename(
-        title="Select Excel File",
-        filetypes=[("Excel files", "*.xlsx *.xls")]
-    )
-
-    if not file_path:
-        return
-
-    try:
-        df = pd.read_excel(file_path, engine="openpyxl")
-
-        if "Submitted_At" not in df.columns:
-            messagebox.showerror("Missing Column", "The file must include 'Submitted_At' column.")
-            return
-
-        # Add new columns if not present
-        if "Test_Start_Date" not in df.columns:
-            df["Test_Start_Date"] = "-"
-        if "Test_End_Date" not in df.columns:
-            df["Test_End_Date"] = "-"
-
-        clear_right_panel(right_panel)
-
-        if top_bar is not None:
-            try:
-                if top_bar.winfo_exists():
-                    top_bar.destroy()
-            except tk.TclError:
-                pass
-            top_bar = None
-
-        if top_bar is None:
-            top_bar = tk.Frame(right_panel, bg="white")
-            top_bar.pack(fill="x", padx=8, pady=5)
-
-            btn_test_end = ttk.Button(top_bar, text="Test End", style="Bold.TButton", width=15, command=lambda: enter_test_end_date(db, file_path))
-            btn_test_end.pack(side="right", pady=(10, 0), padx=5)
-
-            btn_test_start = ttk.Button(top_bar, text="Test Start", style="Bold.TButton", width=15, command=lambda: enter_test_start_date(db, file_path))
-            btn_test_start.pack(side="right", pady=(10, 0), padx=5)
-
-        if not tree_frame:
-            tree_frame = tk.Frame(right_panel, bg="white")
-            tree_frame.pack(expand=True, fill="both", padx=10, pady=10)
-
-        if not tree:
-            tree = ttk.Treeview(tree_frame, columns=list(df.columns), show="headings", selectmode="browse")
-            tree.grid(row=0, column=0, sticky="nsew")
-
-            scrollbar_y = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
-            scrollbar_y.grid(row=0, column=1, sticky="ns")
-
-            scrollbar_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
-            scrollbar_x.grid(row=1, column=0, sticky="ew")
-
-            tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
-            tree_frame.grid_rowconfigure(0, weight=1)
-            tree_frame.grid_columnconfigure(0, weight=1)
-
-        for col in df.columns:
-            tree.heading(col, text=col)
-            tree.column(col, anchor="center")
-
-        for _, row in df.iterrows():
-            row_values = []
-            for col in df.columns:
-                value = row[col]
-                if col in ["Test_Start_Date", "Test_End_Date"]:
-                    row_values.append(value if pd.notna(value) and str(value).strip() != "" else "-")
-                else:
-                    row_values.append(value)
-            tree.insert("", "end", values=row_values)
-
-
-        # Write each row to Firestore
-        for _, row in df.iterrows():
-            submitted_at = row.get("Submitted_At")
-            try:
-                date_obj = datetime.strptime(str(submitted_at), "%d-%m-%Y")
-                collection_name = date_obj.strftime("%d-%m-%Y")
-                product_id = str(row.get("Product_ID", "unknown"))
-                doc_data = row.to_dict()
-                db.collection(collection_name).document(product_id).set(doc_data)
-            except Exception as e:
-                print(f"Error: {e}")
-
-        # Save updated Excel file
-        df.to_excel(file_path, index=False)
-
-        messagebox.showinfo("Success", "File loaded.")
-    except Exception as e:
-        messagebox.showerror("Error", f"Failed to load file:\n{e}")
-
-
-
-def logout(root):
-    global top_bar
-    top_bar = None
-    root.destroy()
-    Login.show_login()
-
-def tester_panel(tester_data, db):
+def show_login():
     root = tk.Tk()
-    root.title(f"Welcome, {tester_data.get('TesterName')}")
-    root.geometry("1000x650")
-
-    # Create frames for left and right panels
-    left_panel = tk.Frame(root, bg="lightgray", width=150)
-    left_panel.pack(side="left", fill="y")
-
-    right_panel = tk.Frame(root, bg="white")
-    right_panel.pack(side="right", expand=True, fill="both")
+    root.configure(bg="White")
+    root.title("Login")
+    root.geometry("320x220")
 
     style = ttk.Style()
     style.theme_use("clam")
-    style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=15)
-    style.configure("Treeview.Heading", background="#d3d3d3", foreground="black", font=("Segoe UI", 10, "bold"))
+    style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=10, border=15)
+    style.configure("Custom.TLabel", background="White", foreground="#333333", font=("Segoe UI", 10, "bold"), padding=5)
+    style.configure("Custom.TEntry", foreground="black", fieldbackground="lightyellow", font=("Segoe UI", 10))
 
-    btn_load_file = ttk.Button(left_panel, text="Load File", style="Bold.TButton", command=lambda: load_file(right_panel, db))
-    btn_load_file.pack(pady=(10,3), padx=8, fill="x")
+    ttk.Label(root, text="Enter ID:", style="Custom.TLabel").pack()
+    entry_ID = ttk.Entry(root, style="Custom.TEntry", width=30)
+    entry_ID.pack(pady=5)
 
-    ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
+    ttk.Label(root, text="Enter password:", style="Custom.TLabel").pack()
+    entry_password = ttk.Entry(root, show="*", style="Custom.TEntry", width=30)
+    entry_password.pack(pady=5)
+
+    ttk.Button(root, text="Login", style="Bold.TButton", command=lambda: login(root, entry_ID, entry_password)).pack(pady=15)
 
     root.mainloop()
+
+
+if __name__ == "__main__":
+    show_login()
