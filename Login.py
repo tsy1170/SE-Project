@@ -7,7 +7,7 @@ import admin_page
 import tester_page
 
 # ----------------- Firestore Setup -----------------
-cred = credentials.Certificate("se-project-ad0dd-firebase-adminsdk-fbsvc-beb7183669.json")
+cred = credentials.Certificate("se-project-ad0dd-firebase-adminsdk-fbsvc-40f9620543.json")
 if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 db = firestore.client()
