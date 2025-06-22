@@ -62,30 +62,65 @@ def login(root, entry_ID, entry_password):
 
     messagebox.showerror("Login Failed", "ID not found.")
 
+
 def show_login():
     root = tk.Tk()
-    root.configure(bg="White")
-    root.title("Login")
-    root.geometry("320x220")
+    root.title("Shelf Life Study Management - Login")
+    root.geometry("500x400")
+    root.configure(bg="#f0f2f5")
+    root.minsize(400, 350)  # allow resizing
+    root.resizable(True, True)
 
+    # Styling
     style = ttk.Style()
     style.theme_use("clam")
-    style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=10, border=15)
-    style.configure("Custom.TLabel", background="White", foreground="#333333", font=("Segoe UI", 10, "bold"), padding=5)
-    style.configure("Custom.TEntry", foreground="black", fieldbackground="lightyellow", font=("Segoe UI", 10))
+    style.configure("TLabel", background="white", font=("Segoe UI", 10))
+    style.configure("Header.TLabel", font=("Segoe UI", 16, "bold"), foreground="#2A4F6E", background="white")
+    style.configure("Custom.TEntry", font=("Segoe UI", 10), foreground="black", fieldbackground="lightyellow", padding=5)
+    style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"))
 
-    ttk.Label(root, text="Enter ID:", style="Custom.TLabel").pack()
-    entry_ID = ttk.Entry(root, style="Custom.TEntry", width=30)
-    entry_ID.pack(pady=5)
+    # Hover and active style map for button
+    style.map("Bold.TButton",
+              background=[("active", "#3b7dd8"), ("!disabled", "#4a90e2")],
+              foreground=[("disabled", "#ccc")])
 
-    ttk.Label(root, text="Enter password:", style="Custom.TLabel").pack()
-    entry_password = ttk.Entry(root, show="*", style="Custom.TEntry", width=30)
-    entry_password.pack(pady=5)
+    # Outer Frame
+    card = tk.Frame(root, bg="white", bd=1, relief="solid")
+    card.pack(expand=True, fill="both", padx=30, pady=30)
 
-    ttk.Button(root, text="Login", style="Bold.TButton", command=lambda: login(root, entry_ID, entry_password)).pack(pady=15)
+    # Header
+    ttk.Label(card, text="Shelf Life Study Management", style="Header.TLabel").pack(pady=(20, 10))
+
+    # Form
+    form_frame = tk.Frame(card, bg="white")
+    form_frame.pack(pady=10, padx=20)
+
+    ttk.Label(form_frame, text="User ID:", background="white").grid(row=0, column=0, sticky="w", pady=5)
+    entry_ID = ttk.Entry(form_frame, style="Custom.TEntry", width=30)
+    entry_ID.grid(row=1, column=0, pady=(0, 10))
+
+    ttk.Label(form_frame, text="Password:", background="white").grid(row=2, column=0, sticky="w", pady=5)
+    entry_password = ttk.Entry(form_frame, show="*", style="Custom.TEntry", width=30)
+    entry_password.grid(row=3, column=0, pady=(0, 5))
+
+    # Show Password Checkbox
+    show_password_var = tk.BooleanVar()
+    def toggle_password():
+        entry_password.config(show="" if show_password_var.get() else "*")
+
+    tk.Checkbutton(form_frame, text="Show Password", variable=show_password_var, onvalue=True, offvalue=False,
+                   command=toggle_password, bg="white", font=("Segoe UI", 9)).grid(row=4, column=0, sticky="w", pady=5)
+
+    # Login Button
+    login_btn = ttk.Button(card, text="Login", style="Bold.TButton",
+                           command=lambda: login(root, entry_ID, entry_password))
+    login_btn.pack(pady=20)
+
+    # Footer
+    footer = tk.Label(root, text="© 2025 SLMS | Version 1.0", bg="#f0f2f5", fg="#888", font=("Segoe UI", 8))
+    footer.pack(side="bottom", pady=5)
 
     root.mainloop()
-
 
 if __name__ == "__main__":
     show_login()
