@@ -37,6 +37,10 @@ def insert_data_into_tree(file_name, df, right_panel):
         tree_frame.grid_rowconfigure(0, weight=1)
         tree_frame.grid_columnconfigure(0, weight=1)
 
+        # Tag configurations
+        tree.tag_configure("expiring_soon", background="yellow")
+        tree.tag_configure("expiring_very_soon", background="tomato")
+
     # If columns are not set, initialize columns
     if not tree["columns"]:
         tree["columns"] = list(df.columns)
@@ -48,11 +52,27 @@ def insert_data_into_tree(file_name, df, right_panel):
             else:
                 tree.column(col, width=150, anchor="center")
 
-
     parent_id = tree.insert("", "end", text=file_name, open=True)
-    for _, row in df.iterrows():
-        tree.insert(parent_id, "end", values=list(row))
 
+    for _, row in df.iterrows():
+        values = list(row)
+
+        # Check for expiry logic — assuming "Test_Date" is in format dd-mm-yyyy
+        tag = ""
+        try:
+            expiry_str = str(row.get("Test_Date", "")).strip()
+            expiry_date = datetime.strptime(expiry_str, "%d-%m-%Y").date()
+            today = datetime.today().date()
+            days_left = (expiry_date - today).days
+
+            if days_left <= 15:
+                tag = "expiring_very_soon"
+            elif days_left <= 30:
+                tag = "expiring_soon"
+        except Exception as e:
+            pass  # Invalid or missing date, skip coloring
+
+        tree.insert(parent_id, "end", values=values, tags=(tag,))
 
 
 def load_excel_file(right_panel, root, db):
@@ -208,14 +228,13 @@ def edit_selected_data(root, db):
     form = tk.Toplevel(root)
     form.configure(bg="White")
     form.title("Edit Product")
-    form.geometry("450x380")
-    form.grab_set()
+    form.geometry("450x350")
     entries = {}
 
     for i, col in enumerate(df.columns):
         ttk.Label(form, text=col+":", style="Custom.TLabel").grid(row=i, column=0, sticky="e", pady=5, padx=(37, 10))
 
-        if col == "Product_ID" or col == "Submitted_At" or col == "Test_Start_Date" or col == "Test_End_Date":
+        if col == "Product_ID" or col == "Submitted_At":
             entry = ttk.Entry(form, width=30, font=("Arial", 9))
             entry.insert(0, row_values[i])
             entry.configure(state="disabled")  # Make it read-only
@@ -308,7 +327,6 @@ def edit_pending_items(root, db):
     form.configure(bg="White")
     form.title("Edit Item")
     form.geometry("420x270")
-    form.grab_set()
 
     ttk.Label(form, text="Product ID:", style="Custom.TLabel").grid(row=0, column=0, sticky="e", pady=5, padx=(24, 10))
     entry_id = ttk.Entry(form, width=30, font=("Arial", 9))
@@ -415,7 +433,6 @@ def add_items_to_pending(right_panel, root, db, user_data):
     form.configure(bg="White")
     form.title("Add new Batch")
     form.geometry("420x270")
-    form.grab_set()
 
     ttk.Label(form, text="Product ID:", style="Custom.TLabel").grid(row=1, column=0, sticky="e", pady=5, padx=(24, 10))
     entry_id = ttk.Entry(form, width=30, font=("Arial", 9))
