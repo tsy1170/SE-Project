@@ -586,10 +586,12 @@ def add_batch_layout(right_panel, root, db, user_data):
         top_bar = tk.Frame(right_panel, bg="white")
         top_bar.pack(fill="x", padx=8, pady=5)
 
-        btn_add = ttk.Button(top_bar, text="Add", style="Bold.TButton", width=15, command=lambda: add_items_to_pending(right_panel, root, db, user_data))
+        btn_add = ttk.Button(top_bar, text="Add", style="Green.TButton", width=15,
+                             command=lambda: add_items_to_pending(right_panel, root, db, user_data))
         btn_add.pack(side="right", pady=(10, 0), padx=5)
 
-        btn_edit = ttk.Button(top_bar, text="Delete", style="Bold.TButton", width=15, command=lambda: delete_pending_items(db))
+        btn_edit = ttk.Button(top_bar, text="Delete", style="Red.TButton", width=15,
+                              command=lambda: delete_pending_items(db))
         btn_edit.pack(side="right", pady=(10, 0), padx=5)
 
         btn_delete = ttk.Button(top_bar, text="Edit", style="Bold.TButton", width=15, command=lambda: edit_pending_items(root, db))
@@ -628,11 +630,32 @@ def logout(root):
     root.destroy()
     Login.show_login()
 
-
 def user_panel(user_data, db):
+    from datetime import datetime, timedelta
+
+    def set_active_button(button):
+        nonlocal active_sidebar_button
+        if active_sidebar_button:
+            active_sidebar_button.configure(style="Bold.TButton")
+        button.configure(style="Active.TButton")
+        active_sidebar_button = button
+
+    def get_row_tag_by_date(test_date_str):
+        try:
+            test_date = datetime.strptime(test_date_str, "%d-%m-%Y").date()
+            days_left = (test_date - datetime.today().date()).days
+            if days_left <= 15:
+                return "red"
+            elif days_left <= 30:
+                return "yellow"
+            else:
+                return ""
+        except:
+            return ""
+
     # Create main window
     root = tk.Tk()
-    root.title(f"Welcome, {user_data.get("Username")}")
+    root.title(f"Welcome, {user_data.get('Username')}")
     root.geometry("1000x650")
 
     # Create frames for left and right panels
@@ -642,23 +665,58 @@ def user_panel(user_data, db):
     right_panel = tk.Frame(root, bg="white")
     right_panel.pack(side="right", expand=True, fill="both")
 
+    # Styles
     style = ttk.Style()
     style.theme_use("clam")
     style.configure("Bold.TButton", font=("Segoe UI", 10, "bold"), width=20, border=15)
+    style.configure("Active.TButton", font=("Segoe UI", 10, "bold"), background="#d0f0c0", foreground="black", width=20)
     style.configure("Treeview.Heading", background="#d3d3d3", foreground="black", font=("Segoe UI", 10, "bold"))
     style.configure("Custom.TLabel", background="White", foreground="#333333", font=("Segoe UI", 10, "bold"), padding=5)
 
-    # Add buttons to left panel
-    btn_load_file = ttk.Button(left_panel, text="Load File", style="Bold.TButton", command=lambda: load_excel_file(right_panel, root, db))
-    btn_load_file.pack(pady=(10,3), padx=8, fill="x")
+    # Action button styles (Top bar)
+    style.configure("Red.TButton", foreground="white", background="#d9534f")
+    style.map("Red.TButton", background=[("active", "#c9302c")])
 
-    btn_clear = ttk.Button(left_panel, text="Clear all", style="Bold.TButton", command=lambda: clear_right_panel(right_panel))
+    style.configure("Green.TButton", foreground="white", background="#5cb85c")
+    style.map("Green.TButton", background=[("active", "#4cae4c")])
+
+    # Highlighting logic for Treeview (used later inside insert function)
+    def apply_treeview_tags(tree):
+        tree.tag_configure("red", background="#ffe5e5")
+        tree.tag_configure("yellow", background="#fff8dc")
+
+    # Left panel buttons with active tracking
+    active_sidebar_button = None
+
+    btn_load_file = ttk.Button(
+        left_panel, text="Load File", style="Bold.TButton",
+        command=lambda: [set_active_button(btn_load_file), load_excel_file(right_panel, root, db)]
+    )
+    btn_load_file.pack(pady=(10, 3), padx=8, fill="x")
+
+    btn_clear = ttk.Button(
+        left_panel, text="Clear all", style="Bold.TButton",
+        command=lambda: [set_active_button(btn_clear), clear_right_panel(right_panel)]
+    )
     btn_clear.pack(pady=3, padx=8, fill="x")
 
-    btn_add_batch = ttk.Button(left_panel, text="Add Batch", style="Bold.TButton", command=lambda: add_batch_layout(right_panel, root, db, user_data))
+    btn_add_batch = ttk.Button(
+        left_panel, text="Add Batch", style="Bold.TButton",
+        command=lambda: [set_active_button(btn_add_batch), add_batch_layout(right_panel, root, db, user_data)]
+    )
     btn_add_batch.pack(pady=3, padx=8, fill="x")
 
-    ttk.Button(left_panel, text="Logout", style="Bold.TButton", command=lambda: logout(root)).pack(pady=20, padx=10, side="bottom")
+    ttk.Button(
+        left_panel, text="Logout", style="Bold.TButton",
+        command=lambda: logout(root)
+    ).pack(pady=20, padx=10, side="bottom")
+
+    # Export helper functions if needed outside
+    root.get_row_tag_by_date = get_row_tag_by_date
+    root.apply_treeview_tags = apply_treeview_tags
+
+    return root  # Optionally return root for reference
+
 
     # Start the main event loop
     root.mainloop()
