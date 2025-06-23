@@ -228,7 +228,7 @@ def edit_selected_data(root, db):
     form = tk.Toplevel(root)
     form.configure(bg="White")
     form.title("Edit Product")
-    form.geometry("450x350")
+    form.geometry("450x370")
     form.grab_set()
     entries = {}
 
