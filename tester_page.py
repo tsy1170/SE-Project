@@ -6,8 +6,6 @@ import pandas as pd
 import logging
 import Login
 
-# Configure logging
-logging.basicConfig(filename="app_log.txt", level=logging.ERROR)
 
 tree = None
 tree_frame = None
@@ -112,8 +110,6 @@ def load_file(right_panel, db):
             messagebox.showerror("Missing Column", "The file must include 'Submitted_At' column.")
             return
 
-        df.setdefault("Test_Start_Date", "-")
-        df.setdefault("Test_End_Date", "-")
 
         clear_right_panel(right_panel)
 
@@ -130,7 +126,7 @@ def load_file(right_panel, db):
         ttk.Button(top_bar, text="Test Start", style="Bold.TButton", width=15,
                    command=lambda: open_date_picker(db, file_path, "Test_Start_Date", "Select Test Start Date")).pack(side="right", pady=(10, 0), padx=5)
 
-        ttk.Label(top_bar, text="Legend: 🔴 <15 days  🟡 15–30 days", background="white", font=("Segoe UI", 9)).pack(side="left", padx=10)
+        ttk.Label(top_bar, text="🔴 <15 days  🟡 15–30 days", background="white", font=("Segoe UI", 9)).pack(side="left", padx=10)
 
         search_var = tk.StringVar()
         search_entry = ttk.Entry(top_bar, textvariable=search_var, width=30)
